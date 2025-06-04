@@ -83,20 +83,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     const { data: userData } = await supabase.auth.getUser();
     if (userData.user) {
-      // Only upsert display_name if displayName is a non-empty string
-      if (typeof displayName === 'string' && displayName.trim() !== '') {
-        await supabase.from('profiles').upsert({
-          id: userData.user.id,
-          email: userData.user.email,
-          display_name: displayName,
-        });
-      } else {
-        // Only upsert id/email, do NOT touch display_name at all
-        await supabase.from('profiles').upsert({
-          id: userData.user.id,
-          email: userData.user.email,
-        }, { onConflict: 'id' });
+      let upsertDisplayName = displayName;
+      // If displayName is not provided, fetch the current display_name from DB
+      if (typeof displayName !== 'string' || displayName.trim() === '') {
+        const { data: profile } = await supabase.from('profiles').select('display_name').eq('id', userData.user.id).single();
+        upsertDisplayName = profile?.display_name ?? '';
       }
+      await supabase.from('profiles').upsert({
+        id: userData.user.id,
+        email: userData.user.email,
+        display_name: upsertDisplayName,
+      }, { onConflict: 'id' });
       fetchUserRole(userData.user.id);
     }
     setUser(email);

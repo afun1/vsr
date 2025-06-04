@@ -83,17 +83,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     const { data: userData } = await supabase.auth.getUser();
     if (userData.user) {
-      let upsertDisplayName = displayName;
-      // If displayName is not provided, fetch the current display_name from DB
-      if (typeof displayName !== 'string' || displayName.trim() === '') {
-        const { data: profile } = await supabase.from('profiles').select('display_name').eq('id', userData.user.id).single();
-        upsertDisplayName = profile?.display_name ?? '';
+      // Check if profile exists
+      const { data: profile } = await supabase.from('profiles').select('id').eq('id', userData.user.id).single();
+      if (!profile) {
+        // Create new profile (include display_name if provided)
+        const upsertObj: any = {
+          id: userData.user.id,
+          email: userData.user.email,
+        };
+        if (typeof displayName === 'string' && displayName.trim() !== '') {
+          upsertObj.display_name = displayName;
+        }
+        await supabase.from('profiles').upsert(upsertObj, { onConflict: 'id' });
       }
-      await supabase.from('profiles').upsert({
-        id: userData.user.id,
-        email: userData.user.email,
-        display_name: upsertDisplayName,
-      }, { onConflict: 'id' });
+      // If profile exists, do NOT upsert unless explicitly updating display_name elsewhere
       fetchUserRole(userData.user.id);
     }
     setUser(email);

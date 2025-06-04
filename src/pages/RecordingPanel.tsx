@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../auth/supabaseClient';
 
+// Fix: add type for RecordingPanelProps
 interface RecordingPanelProps {
   setRecordedVideoUrl: (url: string | null) => void;
-  onStartLiveScreen?: (stream: MediaStream) => void;
+  onStartLiveScreen: (stream: MediaStream) => void;
 }
 
-const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, onStartLiveScreen }) => {
+const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, onStartLiveScreen }: RecordingPanelProps) => {
   // --- State (copied from ScreenRecorder) ---
   const [micGain, setMicGain] = useState(() => {
     const stored = localStorage.getItem('micGain');
@@ -275,6 +276,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
             user_id: userId,
             client_id: finalClientId,
             video_url: videoPublicUrl,
+            transcript: '', // PATCH: placeholder transcript to satisfy NOT NULL constraint
             created_at: new Date().toISOString(),
           });
           if (dbError) {
@@ -293,7 +295,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
                 .eq('user_id', userId)
                 .order('created_at', { ascending: false })
                 .limit(5);
-              if (recs && recs.some(r => r.video_url === videoPublicUrl)) {
+              if (recs && recs.some((r: { video_url: string }) => r.video_url === videoPublicUrl)) {
                 found = true;
                 setRecordedVideoUrl(videoPublicUrl); // Show preview and trigger auto-select
                 window.dispatchEvent(new CustomEvent('sparky-auto-select-recording', { detail: videoPublicUrl }));
@@ -489,7 +491,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
             <input
               type="text"
               value={newFirstName}
-              onChange={e => setNewFirstName(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewFirstName(e.target.value)}
               style={{ width: '100%' }}
               autoComplete="off"
             />
@@ -499,7 +501,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
             <input
               type="text"
               value={newLastName}
-              onChange={e => setNewLastName(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewLastName(e.target.value)}
               style={{ width: '100%' }}
               autoComplete="off"
             />
@@ -509,7 +511,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
             <input
               type="email"
               value={newEmail}
-              onChange={e => setNewEmail(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewEmail(e.target.value)}
               style={{ width: '100%' }}
               autoComplete="off"
             />
@@ -519,7 +521,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
             <input
               type="text"
               value={newUsername}
-              onChange={e => setNewUsername(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewUsername(e.target.value)}
               style={{ width: '100%' }}
               autoComplete="off"
             />
@@ -529,7 +531,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
             <input
               type="tel"
               value={newPhone}
-              onChange={e => setNewPhone(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPhone(e.target.value)}
               style={{ width: '100%' }}
               autoComplete="off"
             />
@@ -542,11 +544,11 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         <label style={{ fontWeight: 600 }}>Microphone/Input Device:</label>
         <select
           value={selectedMic}
-          onChange={e => setSelectedMic(e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedMic(e.target.value)}
           style={{ marginLeft: 10, width: 260 }}
         >
           <option value="">Default</option>
-          {inputs.map(d => (
+          {inputs.map((d: MediaDeviceInfo) => (
             <option key={d.deviceId} value={d.deviceId}>{d.label || `Mic ${d.deviceId}`}</option>
           ))}
         </select>
@@ -555,12 +557,12 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         <label style={{ fontWeight: 600 }}>Speaker/Output Device:</label>
         <select
           value={selectedOutput}
-          onChange={e => setSelectedOutput(e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedOutput(e.target.value)}
           style={{ marginLeft: 10, width: 260 }}
         >
           <option value="">Default</option>
           <option value="system">System Audio (if supported)</option>
-          {outputs.map(d => (
+          {outputs.map((d: MediaDeviceInfo) => (
             <option key={d.deviceId} value={d.deviceId}>{d.label || `Speaker ${d.deviceId}`}</option>
           ))}
         </select>
@@ -574,7 +576,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
           max={2}
           step={0.1}
           value={micGain}
-          onChange={e => setMicGain(Number(e.target.value))}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMicGain(Number(e.target.value))}
           style={{ marginLeft: 10, width: 200 }}
         />
         <span style={{ marginLeft: 8, fontSize: 14 }}>{Math.round(micGain * 100)}%</span>
@@ -587,7 +589,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
           max={2}
           step={0.1}
           value={systemGain}
-          onChange={e => setSystemGain(Number(e.target.value))}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSystemGain(Number(e.target.value))}
           style={{ marginLeft: 10, width: 200 }}
         />
         <span style={{ marginLeft: 8, fontSize: 14 }}>{Math.round(systemGain * 100)}%</span>

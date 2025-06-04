@@ -83,10 +83,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     const { data: userData } = await supabase.auth.getUser();
     if (userData.user) {
-      // Check if profile exists
-      const { data: profile } = await supabase.from('profiles').select('id').eq('id', userData.user.id).single();
-      if (!profile) {
-        // Create new profile (include display_name if provided)
+      // Check if profile exists (by id)
+      const { data: profile, error: profileError } = await supabase.from('profiles').select('id').eq('id', userData.user.id).single();
+      if (profileError || !profile) {
+        // Profile does not exist: create it (include display_name if provided)
         const upsertObj: any = {
           id: userData.user.id,
           email: userData.user.email,
@@ -96,7 +96,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
         await supabase.from('profiles').upsert(upsertObj, { onConflict: 'id' });
       }
-      // If profile exists, do NOT upsert unless explicitly updating display_name elsewhere
+      // If profile exists, do NOT upsert or update display_name here, even if blank/null.
+      // This guarantees display_name is never overwritten or deleted on login.
       fetchUserRole(userData.user.id);
     }
     setUser(email);

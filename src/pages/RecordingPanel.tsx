@@ -431,55 +431,56 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
           New Member
         </label>
       </div>
-      {/* Member Search Field and Dropdown (always visible) */}
-      <div style={{ marginBottom: 16 }}>
-        <label htmlFor="existing-member-search">Search Member:</label>
-        <input
-          id="existing-member-search"
-          type="text"
-          value={search}
-          onChange={e => {
-            setSearch(e.target.value);
-            setClientId(null);
-          }}
-          placeholder="Search by name or email"
-          autoComplete="off"
-          style={{ width: '100%', marginBottom: 6 }}
-          disabled={memberMode !== 'existing'}
-        />
-        {/* Always show dropdown if there are suggestions and in existing member mode */}
-        {memberMode === 'existing' && clientSuggestions.length > 0 && (
-          <select
-            value={clientId || ''}
-            onChange={e => {
-              setClientId(e.target.value || null);
-              if (e.target.value) {
-                localStorage.setItem('lastMemberId', e.target.value);
-                const selected = clientSuggestions.find(c => c.id === e.target.value);
-                setSearch(selected ? (selected.name || selected.email || selected.sparky_username || '') : '');
-              } else {
-                localStorage.removeItem('lastMemberId');
-                setSearch('');
-              }
+      {/* Member Search Field and Dropdown (only for existing member mode) */}
+      {memberMode === 'existing' && (
+        <div style={{ marginBottom: 16 }}>
+          <label htmlFor="existing-member-search">Search Member:</label>
+          <input
+            id="existing-member-search"
+            type="text"
+            value={search}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+              setSearch(e.target.value);
+              setClientId(null);
             }}
-            style={{ width: '100%', padding: 8, borderRadius: 4, border: '1px solid #ccc', background: '#fafbfc', marginTop: 4 }}
-          >
-            <option value="">{suggestionsLoading ? 'Loading...' : 'Select a member'}</option>
-            {clientSuggestions.map(client => (
-              <option key={client.id} value={client.id}>
-                {client.name || client.email || client.sparky_username || '(No Name)'}
-                {client.email ? ` (${client.email})` : ''}
-              </option>
-            ))}
-          </select>
-        )}
-        {suggestionsError && (
-          <div style={{ color: 'red', fontSize: 13, marginTop: 4 }}>{suggestionsError}</div>
-        )}
-        {search.trim().length >= 1 && !suggestionsLoading && clientSuggestions.length === 0 && !suggestionsError && (
-          <div style={{ color: '#888', fontSize: 13, marginTop: 4 }}>No members found.</div>
-        )}
-      </div>
+            placeholder="Search by name or email"
+            autoComplete="off"
+            style={{ width: '100%', marginBottom: 6 }}
+          />
+          {clientSuggestions.length > 0 && (
+            <select
+              value={clientId || ''}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                setClientId(e.target.value || null);
+                if (e.target.value) {
+                  localStorage.setItem('lastMemberId', e.target.value);
+                  const selected = clientSuggestions.find((c: { id: string; name?: string; email?: string; sparky_username?: string }) => c.id === e.target.value);
+                  setSearch(selected ? (selected.name || selected.email || selected.sparky_username || '') : '');
+                } else {
+                  localStorage.removeItem('lastMemberId');
+                  setSearch('');
+                }
+              }}
+              style={{ width: '100%', padding: 8, borderRadius: 4, border: '1px solid #ccc', background: '#fafbfc', marginTop: 4 }}
+              size={5}
+            >
+              <option value="">{suggestionsLoading ? 'Loading...' : 'Select a member'}</option>
+              {clientSuggestions.map((client: { id: string; name?: string; email?: string; sparky_username?: string }) => (
+                <option key={client.id} value={client.id}>
+                  {client.name || client.email || client.sparky_username || '(No Name)'}
+                  {client.email ? ` (${client.email})` : ''}
+                </option>
+              ))}
+            </select>
+          )}
+          {suggestionsError && (
+            <div style={{ color: 'red', fontSize: 13, marginTop: 4 }}>{suggestionsError}</div>
+          )}
+          {search.trim().length >= 1 && !suggestionsLoading && clientSuggestions.length === 0 && !suggestionsError && (
+            <div style={{ color: '#888', fontSize: 13, marginTop: 4 }}>No members found.</div>
+          )}
+        </div>
+      )}
       {/* New Member Form (only if selected) */}
       {memberMode === 'new' && (
         <div style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>

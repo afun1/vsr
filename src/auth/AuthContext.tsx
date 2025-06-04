@@ -83,11 +83,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     const { data: userData } = await supabase.auth.getUser();
     if (userData.user) {
-      await supabase.from('profiles').upsert({
-        id: userData.user.id,
-        email: userData.user.email,
-        display_name: displayName || '',
-      });
+      // Only upsert display_name if provided (e.g., during signup)
+      if (displayName !== undefined) {
+        await supabase.from('profiles').upsert({
+          id: userData.user.id,
+          email: userData.user.email,
+          display_name: displayName,
+        });
+      } else {
+        await supabase.from('profiles').upsert({
+          id: userData.user.id,
+          email: userData.user.email,
+        });
+      }
       fetchUserRole(userData.user.id);
     }
     setUser(email);

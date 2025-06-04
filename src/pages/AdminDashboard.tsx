@@ -286,19 +286,18 @@ const AdminDashboard: React.FC = () => {
 
   // Inline save for display name/email
   const handleSaveUserEdit = async (userId: string) => {
-    // Only update display_name if not empty
     const updateFields: any = { email: editEmail };
-    // Find the user being edited
     const userObj = users.find(u => u.id === userId);
-    // If this is an admin, prevent blanking display_name
+    // For admin, refuse to save if display_name is blank
     if (userObj && userObj.role === 'admin' && (!editDisplayName || editDisplayName.trim() === '')) {
       alert('Admin display name cannot be blank.');
       return;
     }
+    // For all users, only update display_name if non-empty
     if (editDisplayName && editDisplayName.trim() !== '') {
       updateFields.display_name = editDisplayName;
     }
-    // If display_name is blank, do not include it in the update (preserve existing value)
+    // Never update display_name to blank/null for any user
     await supabase.from('profiles').update(updateFields).eq('id', userId);
     setUsers(users => users.map(u => u.id === userId ? { ...u, ...updateFields } : u));
     setEditingUserId(null);

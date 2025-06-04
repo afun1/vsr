@@ -83,8 +83,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     const { data: userData } = await supabase.auth.getUser();
     if (userData.user) {
+      console.log('[LOGIN] user.id:', userData.user.id, 'user.email:', userData.user.email);
       // Check if profile exists (by id)
-      const { data: profile, error: profileError } = await supabase.from('profiles').select('id').eq('id', userData.user.id).single();
+      const { data: profile, error: profileError } = await supabase.from('profiles').select('*').eq('id', userData.user.id).single();
+      console.log('[LOGIN] profile fetch result:', profile, 'error:', profileError);
       if (profileError || !profile) {
         // Profile does not exist: create it (include display_name if provided)
         const upsertObj: any = {
@@ -95,9 +97,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           upsertObj.display_name = displayName;
         }
         await supabase.from('profiles').upsert(upsertObj, { onConflict: 'id' });
+        console.log('[LOGIN] upserted new profile:', upsertObj);
+      } else if ((profile.display_name === null || profile.display_name === '') && typeof displayName === 'string' && displayName.trim() !== '') {
+        // Profile exists but display_name is blank/null and a displayName is provided: heal it
+        await supabase.from('profiles').update({ display_name: displayName }).eq('id', userData.user.id);
+        console.log('[LOGIN] healed blank display_name for existing profile:', userData.user.id);
       }
-      // If profile exists, do NOT upsert or update display_name here, even if blank/null.
-      // This guarantees display_name is never overwritten or deleted on login.
+      // If profile exists and display_name is set, do NOT update display_name here.
       fetchUserRole(userData.user.id);
     }
     setUser(email);

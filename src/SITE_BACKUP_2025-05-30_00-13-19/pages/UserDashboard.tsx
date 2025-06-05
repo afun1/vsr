@@ -54,8 +54,8 @@ const RecordingForm: React.FC<{ onClose: () => void; onRecordingSaved: () => voi
       try {
         const { data, error } = await supabase
           .from('clients')
-          .select('id, name, email, sparky_username, first_name, last_name')
-          .or(`name.ilike.%${search.trim()}%,email.ilike.%${search.trim()}%,sparky_username.ilike.%${search.trim()}%,first_name.ilike.%${search.trim()}%,last_name.ilike.%${search.trim()}%`)
+          .select('id, email, sparky_username, first_name, last_name')
+          .or(`email.ilike.%${search.trim()}%,sparky_username.ilike.%${search.trim()}%,first_name.ilike.%${search.trim()}%,last_name.ilike.%${search.trim()}%`)
           .order('created_at', { ascending: false })
           .limit(10);
         if (error) {
@@ -358,9 +358,9 @@ const RecordingForm: React.FC<{ onClose: () => void; onRecordingSaved: () => voi
                 <li
                   key={client.id}
                   style={{ padding: '6px 12px', cursor: 'pointer', background: client.id === clientId ? '#e3f2fd' : undefined }}
-                  onClick={() => { setClientId(client.id); setSearch(client.name || client.email || client.sparky_username || client.display_name || ''); setClientSuggestions([client]); localStorage.setItem('lastMemberId', client.id); }}
+                  onClick={() => { setClientId(client.id); setSearch(client.email || client.sparky_username || client.display_name || ''); setClientSuggestions([client]); localStorage.setItem('lastMemberId', client.id); }}
                 >
-                  <span style={{ fontWeight: 500 }}>{(client as any).name || (client as any).sparky_username || client.display_name || '(No Name)'}</span>
+                  <span style={{ fontWeight: 500 }}>{(client as any).sparky_username || client.display_name || '(No Name)'}</span>
                   {client.email && <span style={{ color: '#888', marginLeft: 8, fontSize: 13 }}>({client.email})</span>}
                 </li>
               ))}

@@ -96,10 +96,6 @@ const UserDashboard: React.FC = () => {
     }
   };
 
-  function showErrorPopup(message: string) {
-    setErrorPopup({ open: true, message });
-  }
-
   return (
     <>
       <Header />

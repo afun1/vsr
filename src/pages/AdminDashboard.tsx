@@ -51,9 +51,6 @@ const AdminDashboard: React.FC = () => {
   const [members, setMembers] = useState<any[]>([]);
   const [memberSearch, setMemberSearch] = useState('');
 
-  // Add this state at the top of the component
-  const [commentsByRecording, setCommentsByRecording] = useState<Record<string, any[]>>({});
-
   useEffect(() => {
     if (role === 'admin') {
       supabase
@@ -132,13 +129,6 @@ const AdminDashboard: React.FC = () => {
   const handleRoleChange = async (userId: string, newRole: string) => {
     await supabase.from('profiles').update({ role: newRole }).eq('id', userId);
     setUsers(users => users.map(u => u.id === userId ? { ...u, role: newRole } : u));
-  };
-
-  // Delete recording
-  const handleDeleteRecording = async (recId: string) => {
-    if (!window.confirm('Delete this recording? This cannot be undone.')) return;
-    await supabase.from('recordings').delete().eq('id', recId);
-    setRecordings(recs => recs.filter(r => r.id !== recId));
   };
 
   // Export users/recordings as CSV
@@ -368,13 +358,6 @@ const AdminDashboard: React.FC = () => {
     setRecordings(recs => recs.filter(r => !selectedRecordingIds.includes(r.id)));
     setSelectedRecordingIds([]);
   };
-  // --- Bulk Actions for Members ---
-  const handleBulkDeleteMembers = async () => {
-    if (!window.confirm('Delete selected members? This cannot be undone.')) return;
-    await supabase.from('clients').delete().in('id', selectedMemberIds);
-    setMembers(members => members.filter(m => !selectedMemberIds.includes(m.id)));
-    setSelectedMemberIds([]);
-  };
   // --- Export Members CSV ---
   const exportMembersCSV = (rows: any[], columns: string[], filename: string) => {
     const csv = [columns.join(',')].concat(rows.map(r => columns.map(c => JSON.stringify(r[c] ?? '')).join(','))).join('\n');
@@ -415,18 +398,11 @@ const AdminDashboard: React.FC = () => {
           if (!grouped[c.recording_id]) grouped[c.recording_id] = [];
           grouped[c.recording_id].push(c);
         });
-        setCommentsByRecording(grouped);
+        // Remove: setCommentsByRecording(grouped);
       }
     };
     fetchComments();
   }, [pagedRecordings]);
-
-  // Add at the top of the component:
-  const [errorPopup, setErrorPopup] = useState<{ open: boolean; message: string }>({ open: false, message: '' });
-
-  function showErrorPopup(message: string) {
-    setErrorPopup({ open: true, message });
-  }
 
   return (
     <>
@@ -815,31 +791,6 @@ const AdminDashboard: React.FC = () => {
             ))}
         </ul>
       </div>
-      {errorPopup.open && (
-  <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#0008', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-    <div style={{ background: '#fff', borderRadius: 8, padding: 24, minWidth: 340, maxWidth: 600, boxShadow: '0 2px 16px #0003', display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
-      <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 12 }}>Error</div>
-      <textarea
-        value={errorPopup.message}
-        readOnly
-        style={{ width: '100%', minHeight: 120, fontSize: 14, marginBottom: 12, fontFamily: 'monospace', resize: 'vertical' }}
-        onFocus={e => e.target.select()}
-      />
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-        <button
-          onClick={() => {
-            navigator.clipboard.writeText(errorPopup.message);
-          }}
-          style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 18px', fontWeight: 600 }}
-        >Copy</button>
-        <button
-          onClick={() => setErrorPopup({ open: false, message: '' })}
-          style={{ background: '#888', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 18px', fontWeight: 600 }}
-        >Close</button>
-      </div>
-    </div>
-  </div>
-)}
     </>
   );
 };

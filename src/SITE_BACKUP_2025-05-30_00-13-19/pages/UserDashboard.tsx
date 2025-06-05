@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { supabase } from '../auth/supabaseClient';
-import Header from '../Header';
+import { supabase } from '../../auth/supabaseClient';
 
 const RecordingForm: React.FC<{ onClose: () => void; onRecordingSaved: () => void; setPreviewUrl: (url: string) => void }> = ({ onClose, onRecordingSaved, setPreviewUrl }) => {
   // Member selection state
@@ -21,7 +20,6 @@ const RecordingForm: React.FC<{ onClose: () => void; onRecordingSaved: () => voi
   // Audio controls state
   const [recording, setRecording] = useState(false);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const [saveStatus, setSaveStatus] = useState<string | null>(null);
   // Speaker test state
   const [speakerTestActive, setSpeakerTestActive] = useState(false);
   const [speakerTestResult, setSpeakerTestResult] = useState<'yes' | 'no' | null>(null);
@@ -77,7 +75,6 @@ const RecordingForm: React.FC<{ onClose: () => void; onRecordingSaved: () => voi
 
   // Start recording handler
   const startRecording = async () => {
-    setSaveStatus(null);
     setRecording(true);
     setVideoUrl(null);
     recordedChunks.current = [];
@@ -95,22 +92,14 @@ const RecordingForm: React.FC<{ onClose: () => void; onRecordingSaved: () => voi
       };
       mediaRecorderRef.current.start();
     } catch (err: any) {
-      setSaveStatus('Failed to start recording: ' + (err?.message || err));
       setRecording(false);
     }
-  };
-
-  // Stop recording handler
-  const stopRecording = () => {
-    mediaRecorderRef.current?.stop();
-    setRecording(false);
   };
 
   // Upload handler (auto-called after preview is rendered)
   const uploadRecording = async (urlToUpload?: string) => {
     const uploadUrl = urlToUpload || videoUrl;
     if (!uploadUrl || !clientId) return;
-    setSaveStatus('Uploading...');
     try {
       const response = await fetch(uploadUrl);
       const blob = await response.blob();
@@ -118,7 +107,6 @@ const RecordingForm: React.FC<{ onClose: () => void; onRecordingSaved: () => voi
       const fileName = `${userId}-${Date.now()}.webm`;
       const { error: storageError } = await supabase.storage.from('recordings').upload(fileName, blob, { upsert: true, contentType: 'video/webm' });
       if (storageError) {
-        setSaveStatus('Failed to upload video: ' + (storageError.message || JSON.stringify(storageError)));
         return;
       }
       const { data: publicUrlData } = supabase.storage.from('recordings').getPublicUrl(fileName);
@@ -129,10 +117,8 @@ const RecordingForm: React.FC<{ onClose: () => void; onRecordingSaved: () => voi
         video_url: videoPublicUrl,
         created_at: new Date().toISOString(),
       });
-      setSaveStatus('Recording saved!');
       onRecordingSaved();
     } catch (err: any) {
-      setSaveStatus('Unexpected error during upload.');
     }
   };
 

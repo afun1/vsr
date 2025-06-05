@@ -409,138 +409,8 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
   return (
     <div style={{ width: 480, background: '#fff', borderRadius: 10, boxShadow: '0 2px 12px #0001', padding: 24, marginBottom: 32 }}>
       <h3>New Recording</h3>
-      <div style={{ display: 'flex', gap: 24, marginBottom: 12 }}>
-        <label style={{ fontWeight: 500 }}>
-          <input
-            type="radio"
-            name="memberMode"
-            value="existing"
-            checked={memberMode === 'existing'}
-            onChange={() => setMemberMode('existing')}
-            style={{ marginRight: 6 }}
-          />
-          Existing Member
-        </label>
-        <label style={{ fontWeight: 500 }}>
-          <input
-            type="radio"
-            name="memberMode"
-            value="new"
-            checked={memberMode === 'new'}
-            onChange={() => setMemberMode('new')}
-            style={{ marginRight: 6 }}
-          />
-          New Member
-        </label>
-      </div>
-      {/* Member Search Field and Dropdown (only for existing member mode) */}
-      {memberMode === 'existing' && (
-        <div style={{ marginBottom: 16 }}>
-          <label htmlFor="existing-member-search">Search Member:</label>
-          <input
-            id="existing-member-search"
-            type="text"
-            value={search}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-              setSearch(e.target.value);
-              setClientId(null);
-            }}
-            placeholder="Search by name or email"
-            autoComplete="off"
-            style={{ width: '100%', marginBottom: 6 }}
-          />
-          {clientSuggestions.length > 0 && (
-            <select
-              value={clientId || ''}
-              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
-                setClientId(e.target.value || null);
-                if (e.target.value) {
-                  localStorage.setItem('lastMemberId', e.target.value);
-                  const selected = clientSuggestions.find((c: { id: string; name?: string; email?: string; sparky_username?: string }) => c.id === e.target.value);
-                  setSearch(selected ? (selected.name || selected.email || selected.sparky_username || '') : '');
-                } else {
-                  localStorage.removeItem('lastMemberId');
-                  setSearch('');
-                }
-              }}
-              style={{ width: '100%', padding: 8, borderRadius: 4, border: '1px solid #ccc', background: '#fafbfc', marginTop: 4 }}
-              size={5}
-            >
-              <option value="">{suggestionsLoading ? 'Loading...' : 'Select a member'}</option>
-              {clientSuggestions.map((client: { id: string; name?: string; email?: string; sparky_username?: string }) => (
-                <option key={client.id} value={client.id}>
-                  {client.name || client.email || client.sparky_username || '(No Name)'}
-                  {client.email ? ` (${client.email})` : ''}
-                </option>
-              ))}
-            </select>
-          )}
-          {suggestionsError && (
-            <div style={{ color: 'red', fontSize: 13, marginTop: 4 }}>{suggestionsError}</div>
-          )}
-          {search.trim().length >= 1 && !suggestionsLoading && clientSuggestions.length === 0 && !suggestionsError && (
-            <div style={{ color: '#888', fontSize: 13, marginTop: 4 }}>No members found.</div>
-          )}
-        </div>
-      )}
-      {/* New Member Form (only if selected) */}
-      {memberMode === 'new' && (
-        <div style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <label>
-            First Name:
-            <input
-              type="text"
-              value={newFirstName}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewFirstName(e.target.value)}
-              style={{ width: '100%' }}
-              autoComplete="off"
-            />
-          </label>
-          <label>
-            Last Name:
-            <input
-              type="text"
-              value={newLastName}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewLastName(e.target.value)}
-              style={{ width: '100%' }}
-              autoComplete="off"
-            />
-          </label>
-          <label>
-            Email:
-            <input
-              type="email"
-              value={newEmail}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewEmail(e.target.value)}
-              style={{ width: '100%' }}
-              autoComplete="off"
-            />
-          </label>
-          <label>
-            Sparky Username:
-            <input
-              type="text"
-              value={newUsername}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewUsername(e.target.value)}
-              style={{ width: '100%' }}
-              autoComplete="off"
-            />
-          </label>
-          <label>
-            Phone:
-            <input
-              type="tel"
-              value={newPhone}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPhone(e.target.value)}
-              style={{ width: '100%' }}
-              autoComplete="off"
-            />
-          </label>
-          {newMemberError && <div style={{ color: 'red', fontSize: 13 }}>{newMemberError}</div>}
-        </div>
-      )}
-      {/* Audio device selection */}
-      <div style={{ marginTop: 16, marginBottom: 8 }}>
+      {/* Audio device selection (always at the top) */}
+      <div style={{ marginTop: 0, marginBottom: 8 }}>
         <label style={{ fontWeight: 600 }}>Microphone/Input Device:</label>
         <select
           value={selectedMic}
@@ -594,7 +464,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         />
         <span style={{ marginLeft: 8, fontSize: 14 }}>{Math.round(systemGain * 100)}%</span>
       </div>
-      {/* Buttons at the bottom of the panel */}
+      {/* Recording controls and preview */}
       <div style={{ display: 'flex', marginTop: 32, justifyContent: 'space-between', alignItems: 'center' }}>
         {recording && liveStream ? (
           <>
@@ -628,16 +498,158 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         ) : (
           <>
             <button
-              onClick={handleStartRecording}
-              disabled={memberMode === 'existing' ? !clientId : newMemberLoading || !newFirstName.trim() || !newLastName.trim() || !newEmail.trim() || !newUsername.trim() || !newPhone.trim()}
-              style={{ background: '#28a745', color: '#fff', fontWeight: 700, border: 'none', borderRadius: 6, padding: '12px 28px', fontSize: 18, cursor: (memberMode === 'existing' ? !clientId : newMemberLoading || !newFirstName.trim() || !newLastName.trim() || !newEmail.trim() || !newUsername.trim() || !newPhone.trim()) ? 'not-allowed' : 'pointer', boxShadow: '0 2px 8px #28a74522' }}
+              onClick={() => setRecording(true)}
+              style={{ background: '#28a745', color: '#fff', fontWeight: 700, border: 'none', borderRadius: 6, padding: '12px 28px', fontSize: 18, cursor: 'pointer', boxShadow: '0 2px 8px #28a74522' }}
             >
-              + New Recording
+              Start Recording
             </button>
             <div />
           </>
         )}
       </div>
+      {/* After recording is stopped, show member selection/creation forms before upload */}
+      {!recording && !liveStream && (
+        <>
+          <div style={{ display: 'flex', gap: 24, marginBottom: 12, marginTop: 32 }}>
+            <label style={{ fontWeight: 500 }}>
+              <input
+                type="radio"
+                name="memberMode"
+                value="existing"
+                checked={memberMode === 'existing'}
+                onChange={() => setMemberMode('existing')}
+                style={{ marginRight: 6 }}
+              />
+              Existing Member
+            </label>
+            <label style={{ fontWeight: 500 }}>
+              <input
+                type="radio"
+                name="memberMode"
+                value="new"
+                checked={memberMode === 'new'}
+                onChange={() => setMemberMode('new')}
+                style={{ marginRight: 6 }}
+              />
+              New Member
+            </label>
+          </div>
+          {/* Member Search Field and Dropdown (only for existing member mode) */}
+          {memberMode === 'existing' && (
+            <div style={{ marginBottom: 16 }}>
+              <label htmlFor="existing-member-search">Search Member:</label>
+              <input
+                id="existing-member-search"
+                type="text"
+                value={search}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  setSearch(e.target.value);
+                  setClientId(null);
+                }}
+                placeholder="Search by name or email"
+                autoComplete="off"
+                style={{ width: '100%', marginBottom: 6 }}
+              />
+              {clientSuggestions.length > 0 && (
+                <select
+                  value={clientId || ''}
+                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                    setClientId(e.target.value || null);
+                    if (e.target.value) {
+                      localStorage.setItem('lastMemberId', e.target.value);
+                      const selected = clientSuggestions.find((c: { id: string; name?: string; email?: string; sparky_username?: string }) => c.id === e.target.value);
+                      setSearch(selected ? (selected.name || selected.email || selected.sparky_username || '') : '');
+                    } else {
+                      localStorage.removeItem('lastMemberId');
+                      setSearch('');
+                    }
+                  }}
+                  style={{ width: '100%', padding: 8, borderRadius: 4, border: '1px solid #ccc', background: '#fafbfc', marginTop: 4 }}
+                  size={5}
+                >
+                  <option value="">{suggestionsLoading ? 'Loading...' : 'Select a member'}</option>
+                  {clientSuggestions.map((client: { id: string; name?: string; email?: string; sparky_username?: string }) => (
+                    <option key={client.id} value={client.id}>
+                      {client.name || client.email || client.sparky_username || '(No Name)'}
+                      {client.email ? ` (${client.email})` : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {suggestionsError && (
+                <div style={{ color: 'red', fontSize: 13, marginTop: 4 }}>{suggestionsError}</div>
+              )}
+              {search.trim().length >= 1 && !suggestionsLoading && clientSuggestions.length === 0 && !suggestionsError && (
+                <div style={{ color: '#888', fontSize: 13, marginTop: 4 }}>No members found.</div>
+              )}
+            </div>
+          )}
+          {/* New Member Form (only if selected) */}
+          {memberMode === 'new' && (
+            <div style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <label>
+                First Name:
+                <input
+                  type="text"
+                  value={newFirstName}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewFirstName(e.target.value)}
+                  style={{ width: '100%' }}
+                  autoComplete="off"
+                />
+              </label>
+              <label>
+                Last Name:
+                <input
+                  type="text"
+                  value={newLastName}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewLastName(e.target.value)}
+                  style={{ width: '100%' }}
+                  autoComplete="off"
+                />
+              </label>
+              <label>
+                Email:
+                <input
+                  type="email"
+                  value={newEmail}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewEmail(e.target.value)}
+                  style={{ width: '100%' }}
+                  autoComplete="off"
+                />
+              </label>
+              <label>
+                Sparky Username:
+                <input
+                  type="text"
+                  value={newUsername}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewUsername(e.target.value)}
+                  style={{ width: '100%' }}
+                  autoComplete="off"
+                />
+              </label>
+              <label>
+                Phone:
+                <input
+                  type="tel"
+                  value={newPhone}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPhone(e.target.value)}
+                  style={{ width: '100%' }}
+                  autoComplete="off"
+                />
+              </label>
+              {newMemberError && <div style={{ color: 'red', fontSize: 13 }}>{newMemberError}</div>}
+            </div>
+          )}
+          {/* Upload button (enabled only if member info is complete) */}
+          <button
+            onClick={handleStartRecording}
+            disabled={memberMode === 'existing' ? !clientId : newMemberLoading || !newFirstName.trim() || !newLastName.trim() || !newEmail.trim() || !newUsername.trim() || !newPhone.trim()}
+            style={{ background: '#28a745', color: '#fff', fontWeight: 700, border: 'none', borderRadius: 6, padding: '12px 28px', fontSize: 18, cursor: (memberMode === 'existing' ? !clientId : newMemberLoading || !newFirstName.trim() || !newLastName.trim() || !newEmail.trim() || !newUsername.trim() || !newPhone.trim()) ? 'not-allowed' : 'pointer', boxShadow: '0 2px 8px #28a74522', marginTop: 12 }}
+          >
+            Upload Recording
+          </button>
+        </>
+      )}
       {/* Hidden video for PiP */}
       {recording && liveStream && (
         <video

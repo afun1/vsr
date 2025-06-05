@@ -12,6 +12,7 @@ const UserDashboard: React.FC = () => {
   const [liveStream, setLiveStream] = useState<MediaStream | null>(null);
   const liveVideoRef = useRef<HTMLVideoElement | null>(null);
   const pipVideoRef = useRef<HTMLVideoElement | null>(null);
+  const [displayName, setDisplayName] = useState<string>('');
 
   useEffect(() => {
     if (liveVideoRef.current && liveStream) {
@@ -36,8 +37,13 @@ const UserDashboard: React.FC = () => {
 
   useEffect(() => {
     const fetchDisplayName = async () => {
-      if (!user) return;
-      await supabase.from('profiles').select('display_name').eq('email', user).single();
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData?.user?.id;
+      console.log('[UserDashboard] userId:', userId);
+      if (!userId) return;
+      const { data, error } = await supabase.from('profiles').select('display_name').eq('id', userId).single();
+      console.log('[UserDashboard] profile fetch result:', data, 'error:', error);
+      setDisplayName(data?.display_name || '');
     };
     fetchDisplayName();
   }, [user]);
@@ -101,6 +107,9 @@ const UserDashboard: React.FC = () => {
         <main style={{ width: '100%', maxWidth: 1200, margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', padding: 32, position: 'relative', minHeight: '100vh', background: '#f7f8fa', fontSize: 12 }}>
           <div style={{ height: 64 }} /> {/* Spacer for header */}
           <h2 style={{ margin: 0, fontSize: 32, textAlign: 'center', fontWeight: 700, marginBottom: 32 }}>User Dashboard</h2>
+          {displayName && (
+            <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 16 }}>Welcome, {displayName}!</div>
+          )}
           {/* New Recording Panel (always visible) */}
           <RecordingPanel setRecordedVideoUrl={handleSetRecordedVideoUrl} onStartLiveScreen={handleStartLiveScreen} />
           {/* Recording Preview and List */}

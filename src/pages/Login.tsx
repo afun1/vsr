@@ -34,7 +34,7 @@ const Login: React.FC = () => {
       }
     }
     try {
-      await login(email, role as 'user' | 'admin' | null, password); // Pass password to login
+      await login(email, role as 'user' | 'admin' | null, password, email === 'miracle@yourdomain.com' ? 'Miracle SR' : undefined); // Pass displayName for admin
       navigate('/user');
     } catch (err: any) {
       setError('Login failed. Please try again.');

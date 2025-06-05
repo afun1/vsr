@@ -3,14 +3,15 @@ import { supabase } from './auth/supabaseClient';
 import { useAuth } from './auth/AuthContext';
 
 const Header: React.FC = () => {
-  const { user } = useAuth();
+  const [showRecordingScreen, setShowRecordingScreen] = useState(false);
+  const { user, role } = useAuth();
   const [displayName, setDisplayName] = useState('');
   const [isRecording, setIsRecording] = useState(false);
 
   useEffect(() => {
     // Listen for custom event from ScreenRecorder
-    const handler = () => {
-      // setShowRecordingScreen(!!e.detail); // Removed unused
+    const handler = (e: any) => {
+      setShowRecordingScreen(!!e.detail);
     };
     window.addEventListener('sparky-recording-visibility', handler);
     return () => window.removeEventListener('sparky-recording-visibility', handler);
@@ -96,7 +97,12 @@ const Header: React.FC = () => {
       </div>
       {/* Right column (user/profile/logout) */}
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>
-        <a href="http://localhost:5175/user" style={{ color: '#1976d2', fontWeight: 600, fontSize: 16, textDecoration: 'none', marginRight: 8 }}>Home</a>
+        <a
+          href={role === 'admin' ? '/admin' : '/user'}
+          style={{ color: '#1976d2', fontWeight: 600, fontSize: 16, textDecoration: 'none', marginRight: 8 }}
+        >
+          Home
+        </a>
         <a href="/search-export" style={{ color: '#1976d2', fontWeight: 600, fontSize: 16, textDecoration: 'none', marginRight: 8 }}>Search</a>
         <a href="/search-export" style={{ color: '#1976d2', fontWeight: 600, fontSize: 16, textDecoration: 'none', marginRight: 8 }}>Export</a>
         <button

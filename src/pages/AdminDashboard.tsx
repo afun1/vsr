@@ -492,11 +492,6 @@ const AdminDashboard: React.FC = () => {
         {/* END lookupUserChoices dropdown */}
         <div style={{ display: 'flex', gap: 32, marginBottom: 24 }}>
           {/* Removed Make a Recording box */}
-          {role === 'admin' && (
-            <button onClick={healBlankDisplayNames} style={{ background: '#ff9800', color: '#fff', border: 'none', borderRadius: 4, padding: '10px 22px', fontWeight: 700 }}>
-              Heal All Blank Display Names
-            </button>
-          )}
         </div>
         <hr />
         <h3>User Management</h3>

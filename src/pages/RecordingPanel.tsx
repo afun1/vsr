@@ -44,6 +44,8 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
   // State for stopped recording
   const [stoppedRecordingBlob, setStoppedRecordingBlob] = useState<Blob | null>(null);
   const [stoppedRecordingUrl, setStoppedRecordingUrl] = useState<string | null>(null);
+  // Add state for pause/resume
+  const [isPaused, setIsPaused] = useState(false);
 
   // When switching memberMode, reset search and suggestions state
   useEffect(() => {
@@ -151,7 +153,16 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
       setLiveStream(screenStream); // Show live preview (for legacy fallback)
       // 2. Get mic stream using selectedMic
       let micStream: MediaStream | null = null;
-      if (selectedMic) {
+      if (selectedMic === 'bluetooth') {
+        // Try to get a Bluetooth audio input if available
+        const bluetoothDevice = inputs.find(d => d.label.toLowerCase().includes('bluetooth'));
+        if (bluetoothDevice) {
+          micStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: bluetoothDevice.deviceId } } });
+        } else {
+          // Fallback: try default audio
+          micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        }
+      } else if (selectedMic) {
         micStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: selectedMic } } });
       } else {
         micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -198,6 +209,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         setStoppedRecordingUrl(url);
         setRecording(false);
         setLiveStream(null);
+        setIsPaused(false);
         // Do NOT upload or insert to DB here!
       };
       mediaRecorder.start();
@@ -292,18 +304,21 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
       }
       const { data: publicUrlData } = supabase.storage.from('recordings').getPublicUrl(fileName);
       const videoPublicUrl = publicUrlData?.publicUrl;
-      const { error: dbError } = await supabase.from('recordings').insert({
+      const { data: insertData, error: dbError } = await supabase.from('recordings').insert({
         user_id: userId,
         client_id: finalClientId,
         video_url: videoPublicUrl,
         transcript: '',
         created_at: new Date().toISOString(),
-      });
+      }).select('id, video_url');
       if (dbError) {
         setRecordingError('Failed to insert recording row: ' + dbError.message);
-      } else {
-        setRecordedVideoUrl(videoPublicUrl);
-        window.dispatchEvent(new CustomEvent('sparky-auto-select-recording', { detail: videoPublicUrl }));
+      } else if (insertData && insertData.length > 0) {
+        // Use the actual UUID id from the inserted row
+        const newRecording = insertData[0];
+        setRecordedVideoUrl(newRecording.video_url);
+        window.dispatchEvent(new CustomEvent('sparky-auto-select-recording', { detail: newRecording.video_url }));
+        // Optionally, store the new recording id in state/localStorage if needed for further actions
         setStoppedRecordingBlob(null);
         setStoppedRecordingUrl(null);
         setClientId(null);
@@ -395,6 +410,18 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
   //   setRecording(false);
   // };
 
+  // Add pause/resume handler for recording
+  const handlePauseResume = () => {
+    if (!mediaRecorderRef.current) return;
+    if (mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.pause();
+      setIsPaused(true);
+    } else if (mediaRecorderRef.current.state === 'paused') {
+      mediaRecorderRef.current.resume();
+      setIsPaused(false);
+    }
+  };
+
   // --- UI ---
   return (
     <div style={{ width: 480, background: '#fff', borderRadius: 10, boxShadow: '0 2px 12px #0001', padding: 24, marginBottom: 32 }}>
@@ -413,9 +440,12 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
           onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedMic(e.target.value)}
           style={{ marginLeft: 10, width: 260 }}
         >
-          <option value="">Default</option>
-          {inputs.map((d: MediaDeviceInfo) => (
-            <option key={d.deviceId} value={d.deviceId}>{d.label || `Mic ${d.deviceId}`}</option>
+          {/* Bluetooth option always at the top */}
+          <option value="bluetooth">Bluetooth Audio</option>
+          {inputs.map((input, idx) => (
+            <option key={input.deviceId || idx} value={input.deviceId}>
+              {input.label || `Microphone ${idx+1}`}
+            </option>
           ))}
         </select>
       </div>
@@ -466,18 +496,36 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
           <>
             {/* Live preview of the window being recorded, always visible in the workspace */}
             <video ref={liveVideoRef} style={{ width: 400, height: 220, borderRadius: 8, background: '#000', marginBottom: 24 }} autoPlay muted />
-            <button
-              onClick={() => {
-                if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-                  mediaRecorderRef.current.stop();
-                }
-                setRecording(false);
-                setLiveStream(null);
-              }}
-              style={{ background: '#dc3545', color: '#fff', fontWeight: 700, border: 'none', borderRadius: 6, padding: '12px 28px', fontSize: 18, cursor: 'pointer', boxShadow: '0 2px 8px #dc354522', marginTop: 16 }}
-            >
-              Stop Recording
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'row', gap: 16, marginBottom: 8 }}>
+              {!isPaused ? (
+                <button
+                  onClick={handlePauseResume}
+                  style={{ background: '#ff9800', color: '#fff', fontWeight: 700, border: 'none', borderRadius: 6, padding: '12px 28px', fontSize: 18, cursor: 'pointer', boxShadow: '0 2px 8px #ff980022' }}
+                >
+                  Pause
+                </button>
+              ) : (
+                <button
+                  onClick={handlePauseResume}
+                  style={{ background: '#1976d2', color: '#fff', fontWeight: 700, border: 'none', borderRadius: 6, padding: '12px 28px', fontSize: 18, cursor: 'pointer', boxShadow: '0 2px 8px #1976d222' }}
+                >
+                  Resume
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+                    mediaRecorderRef.current.stop();
+                  }
+                  setRecording(false);
+                  setLiveStream(null);
+                  setIsPaused(false);
+                }}
+                style={{ background: '#dc3545', color: '#fff', fontWeight: 700, border: 'none', borderRadius: 6, padding: '12px 28px', fontSize: 18, cursor: 'pointer', boxShadow: '0 2px 8px #dc354522', marginTop: 0 }}
+              >
+                Stop Recording
+              </button>
+            </div>
           </>
         ) : stoppedRecordingUrl ? (
           // After stop, always show preview and member forms if stoppedRecordingUrl is set

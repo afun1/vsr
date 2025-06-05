@@ -18,6 +18,7 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
   const [search, setSearch] = useState('');
 
   useEffect(() => {
+    if (!user) { setRecordings([]); setLoading(false); return; }
     const fetchRecordings = async () => {
       setLoading(true);
       // Get the user's id from Supabase
@@ -27,8 +28,8 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
       let query = supabase
         .from('recordings')
         .select('id, user_id, video_url, created_at, client_id, clients:client_id (name, email, first_name, last_name), profiles:user_id (display_name, email)')
-        .order('created_at', { ascending: false })
-        .eq('user_id', userId); // Only current user's recordings
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false }); // Only current user's recordings
       const { data, error } = await query;
       if (error) {
         setLoading(false);
@@ -36,7 +37,7 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
       setLoading(false);
       // Auto-select and preview the latest recording if a new one was just added
       if (data && data.length > 0 && recordedVideoUrl) {
-        const found = data.find(r => r.video_url === recordedVideoUrl);
+        const found = data.find((r: any) => r.video_url === recordedVideoUrl);
         if (found) setSelectedRecording(found);
       }
     };
@@ -49,7 +50,7 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
       const url = e.detail;
       if (!url) return;
       // Try to find the recording with this video_url
-      const found = recordings.find(r => r.video_url === url);
+      const found = recordings.find((r: any) => r.video_url === url);
       if (found) setSelectedRecording(found);
     };
     window.addEventListener('sparky-auto-select-recording', handler);
@@ -59,7 +60,7 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
   // Auto-select and preview the new recording if recordedVideoUrl changes
   useEffect(() => {
     if (recordedVideoUrl && recordings.length > 0) {
-      const found = recordings.find(r => r.video_url === recordedVideoUrl);
+      const found = recordings.find((r: any) => r.video_url === recordedVideoUrl);
       if (found) setSelectedRecording(found);
     }
   }, [recordedVideoUrl, recordings]);
@@ -74,13 +75,13 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
       if (!userId) { setRecordings([]); setLoading(false); return; }
       let query = supabase
         .from('recordings')
-        .select('id, user_id, video_url, created_at, client_id, clients:client_id (name, email, first_name, last_name), profiles:user_id (display_name, email)')
-        .order('created_at', { ascending: false })
-        .eq('user_id', userId);
+        .select('id, user_id, video_url, created_at, client_id, clients:client_id (name, email, first_name, last_name), profiles:user_id (display_name, email)') // removed joined selects
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
       const { data, error } = await query;
       if (!error && data) {
         setRecordings(data);
-        const found = data.find(r => r.video_url === recordedVideoUrl);
+        const found = data.find((r: any) => r.video_url === recordedVideoUrl);
         if (found) setSelectedRecording(found);
       }
       setLoading(false);

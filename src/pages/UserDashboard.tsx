@@ -13,6 +13,7 @@ const UserDashboard: React.FC = () => {
   const liveVideoRef = useRef<HTMLVideoElement | null>(null);
   const pipVideoRef = useRef<HTMLVideoElement | null>(null);
   const [displayName, setDisplayName] = useState<string>('');
+  const [errorPopup, setErrorPopup] = useState<{ open: boolean; message: string }>({ open: false, message: '' });
 
   useEffect(() => {
     if (liveVideoRef.current && liveStream) {
@@ -47,6 +48,13 @@ const UserDashboard: React.FC = () => {
     };
     fetchDisplayName();
   }, [user]);
+
+  // Debug log to print the result of supabase.auth.getUser()
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      console.log('[DEBUG] supabase.auth.getUser()', data);
+    });
+  }, []);
 
   // Handler to start recording and show the live screen in workspace
   const handleStartLiveScreen = (stream: MediaStream) => {
@@ -88,6 +96,10 @@ const UserDashboard: React.FC = () => {
     }
   };
 
+  function showErrorPopup(message: string) {
+    setErrorPopup({ open: true, message });
+  }
+
   return (
     <>
       <Header />
@@ -113,6 +125,31 @@ const UserDashboard: React.FC = () => {
         <ScreenRecorder recordedVideoUrl={recordedVideoUrl} />
         {/* Remove local preview video here to avoid double preview and confusion */}
       </main>
+      {errorPopup.open && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#0008', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 8, padding: 24, minWidth: 340, maxWidth: 600, boxShadow: '0 2px 16px #0003', display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
+            <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 12 }}>Error</div>
+            <textarea
+              value={errorPopup.message}
+              readOnly
+              style={{ width: '100%', minHeight: 120, fontSize: 14, marginBottom: 12, fontFamily: 'monospace', resize: 'vertical' }}
+              onFocus={e => e.target.select()}
+            />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(errorPopup.message);
+                }}
+                style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 18px', fontWeight: 600 }}
+              >Copy</button>
+              <button
+                onClick={() => setErrorPopup({ open: false, message: '' })}
+                style={{ background: '#888', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 18px', fontWeight: 600 }}
+              >Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

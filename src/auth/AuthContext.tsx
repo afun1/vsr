@@ -52,6 +52,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const userId = userData?.user?.id;
     if (!userId) {
       setRole('user');
+      console.log('[AuthContext] fetchUserRole: no userId, setting role to user');
       return;
     }
     const { data, error } = await supabase
@@ -61,9 +62,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       .single();
     if (error || !data) {
       setRole('user');
+      console.log('[AuthContext] fetchUserRole: error or no data, setting role to user', error, data);
       return;
     }
     setRole(data.role as UserRole);
+    console.log('[AuthContext] fetchUserRole: set role to', data.role);
   };
 
   // Supabase login
@@ -126,6 +129,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   if (loading) return <div>Loading...</div>;
+
+  // Debug: log current role and user on every render
+  console.log('[AuthProvider] render: user:', user, 'role:', role);
 
   return (
     <AuthContext.Provider value={{ user, role, login, logout, promoteToAdmin }}>

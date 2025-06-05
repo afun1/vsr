@@ -51,6 +51,9 @@ const AdminDashboard: React.FC = () => {
   const [members, setMembers] = useState<any[]>([]);
   const [memberSearch, setMemberSearch] = useState('');
 
+  // Add this state at the top of the component
+  const [commentsByRecording, setCommentsByRecording] = useState<Record<string, any[]>>({});
+
   useEffect(() => {
     if (role === 'admin') {
       supabase
@@ -81,14 +84,33 @@ const AdminDashboard: React.FC = () => {
 
   // Fetch all recordings (admin only)
   useEffect(() => {
-    if (role === 'admin') {
-      const fetchRecordings = async () => {
-        const { data, error } = await supabase.from('recordings').select(`id, video_url, transcript, created_at, client_id, user_id, clients:client_id (name, first_name, last_name), profiles:user_id (display_name)`).order('created_at', { ascending: false });
-        if (!error && data) setRecordings(data);
-      };
-      fetchRecordings();
+    console.log('[AdminDashboard] role:', role, 'user:', user);
+    if (!role) {
+      console.log('[AdminDashboard] Waiting for role to be set before fetching recordings.');
+      return;
     }
-  }, [role]);
+    const fetchRecordings = async () => {
+      console.log('[AdminDashboard] Fetching recordings. Role:', role, 'User:', user);
+      let query = supabase
+        .from('recordings')
+        .select('id, video_url, transcript, created_at, client_id, user_id, clients:client_id (name, first_name, last_name), profiles:user_id (display_name)')
+        .order('created_at', { ascending: false });
+
+      if (role !== 'admin') {
+        // Only fetch recordings for the current user
+        const { data: userData } = await supabase.auth.getUser();
+        const userId = userData?.user?.id;
+        if (!userId) return setRecordings([]);
+        query = query.eq('user_id', userId);
+      }
+
+      const { data, error } = await query;
+      console.log('[AdminDashboard] Recordings fetched:', data, 'Error:', error);
+      if (!error && data) setRecordings(data);
+      else console.log('[AdminDashboard] Error fetching recordings:', error);
+    };
+    fetchRecordings();
+  }, [role, user]);
 
   // Fetch analytics (counts)
   useEffect(() => {
@@ -193,10 +215,16 @@ const AdminDashboard: React.FC = () => {
       const userProfile = matches[0];
       setLookupUser(userProfile);
       // Fetch recordings
-      const { data: recs } = await supabase.from('recordings').select('*').eq('user_id', userProfile.id).order('created_at', { ascending: false });
+      const { data: recs } = await supabase.from('recordings')
+        .select('*')
+        .eq('user_id', userProfile.id)
+        .order('created_at', { ascending: false });
       setLookupRecordings(recs || []);
       // Fetch audit logs
-      const { data: logs } = await supabase.from('audit_logs').select('*').eq('user_id', userProfile.id).order('created_at', { ascending: false });
+      const { data: logs } = await supabase.from('audit_logs')
+        .select('*')
+        .eq('user_id', userProfile.id)
+        .order('created_at', { ascending: false });
       setLookupLogs(logs || []);
       setLookupLoading(false);
       return;
@@ -213,10 +241,16 @@ const AdminDashboard: React.FC = () => {
     setLookupUserChoices([]);
     setLookupLoading(true);
     // Fetch recordings
-    const { data: recs } = await supabase.from('recordings').select('*').eq('user_id', userProfile.id).order('created_at', { ascending: false });
+    const { data: recs } = await supabase.from('recordings')
+      .select('*')
+      .eq('user_id', userProfile.id)
+      .order('created_at', { ascending: false });
     setLookupRecordings(recs || []);
     // Fetch audit logs
-    const { data: logs } = await supabase.from('audit_logs').select('*').eq('user_id', userProfile.id).order('created_at', { ascending: false });
+    const { data: logs } = await supabase.from('audit_logs')
+      .select('*')
+      .eq('user_id', userProfile.id)
+      .order('created_at', { ascending: false });
     setLookupLogs(logs || []);
     setLookupLoading(false);
   };
@@ -327,17 +361,19 @@ const AdminDashboard: React.FC = () => {
     setUsers(users => users.filter(u => !selectedUserIds.includes(u.id)));
     setSelectedUserIds([]);
   };
-  const handleBulkPromoteUsers = async () => {
-    await supabase.from('profiles').update({ role: 'admin' }).in('id', selectedUserIds);
-    setUsers(users => users.map(u => selectedUserIds.includes(u.id) ? { ...u, role: 'admin' } : u));
-    setSelectedUserIds([]);
-  };
   // --- Bulk Actions for Recordings ---
   const handleBulkDeleteRecordings = async () => {
     if (!window.confirm('Delete selected recordings? This cannot be undone.')) return;
     await supabase.from('recordings').delete().in('id', selectedRecordingIds);
     setRecordings(recs => recs.filter(r => !selectedRecordingIds.includes(r.id)));
     setSelectedRecordingIds([]);
+  };
+  // --- Bulk Actions for Members ---
+  const handleBulkDeleteMembers = async () => {
+    if (!window.confirm('Delete selected members? This cannot be undone.')) return;
+    await supabase.from('clients').delete().in('id', selectedMemberIds);
+    setMembers(members => members.filter(m => !selectedMemberIds.includes(m.id)));
+    setSelectedMemberIds([]);
   };
   // --- Export Members CSV ---
   const exportMembersCSV = (rows: any[], columns: string[], filename: string) => {
@@ -361,6 +397,36 @@ const AdminDashboard: React.FC = () => {
   // Members
   const memberPageCount = Math.max(1, Math.ceil(filteredMembers.length / MEMBERS_PER_PAGE));
   const pagedMembers = filteredMembers.slice((memberPage-1)*MEMBERS_PER_PAGE, memberPage*MEMBERS_PER_PAGE);
+
+  const [copiedUrlId, setCopiedUrlId] = useState<string | null>(null);
+
+  // Fetch comments for recordings on page change
+  useEffect(() => {
+    if (!pagedRecordings || pagedRecordings.length === 0) return;
+    const fetchComments = async () => {
+      const ids = pagedRecordings.map(r => r.id);
+      const { data, error } = await supabase
+        .from('comments')
+        .select('id, recording_id, user_id, content, created_at, user_display_name')
+        .in('recording_id', ids);
+      if (!error && data) {
+        const grouped: Record<string, any[]> = {};
+        data.forEach((c: any) => {
+          if (!grouped[c.recording_id]) grouped[c.recording_id] = [];
+          grouped[c.recording_id].push(c);
+        });
+        setCommentsByRecording(grouped);
+      }
+    };
+    fetchComments();
+  }, [pagedRecordings]);
+
+  // Add at the top of the component:
+  const [errorPopup, setErrorPopup] = useState<{ open: boolean; message: string }>({ open: false, message: '' });
+
+  function showErrorPopup(message: string) {
+    setErrorPopup({ open: true, message });
+  }
 
   return (
     <>
@@ -493,9 +559,9 @@ const AdminDashboard: React.FC = () => {
             />
             <button type="submit" style={{ background: 'rgb(25, 118, 210)', color: 'rgb(255, 255, 255)', border: 'none', borderRadius: 4, padding: '7px 18px', fontWeight: 600 }}>User Lookup</button>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flex: 1 }}>
-              <button onClick={handleBulkPromoteUsers} disabled={selectedUserIds.length === 0} style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>Promote to Admin</button>
-              <button onClick={() => exportCSV(filteredUsers, ['id','email','display_name','role'], 'users.csv')} style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>Export Users CSV</button>
-              <button onClick={handleBulkDeleteUsers} disabled={selectedUserIds.length === 0} style={{ background: '#e53935', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>Delete Selected</button>
+              <button onClick={handleBulkDeleteUsers} disabled={selectedUserIds.length < 2} style={{ background: '#e53935', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600, opacity: selectedUserIds.length < 2 ? 0.5 : 1, cursor: selectedUserIds.length < 2 ? 'not-allowed' : 'pointer' }}>
+                Delete Selected
+              </button>
             </div>
           </div>
         </div>
@@ -589,6 +655,19 @@ const AdminDashboard: React.FC = () => {
             <button type="submit" style={{ background: 'rgb(25, 118, 210)', color: 'rgb(255, 255, 255)', border: 'none', borderRadius: 4, padding: '7px 18px', fontWeight: 600 }}>Member Lookup</button>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flex: 1 }}>
               <button onClick={() => exportMembersCSV(filteredMembers, ['id','email','name','first_name','last_name','created_at'], 'members.csv')} style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>Export Members CSV</button>
+              <button
+                onClick={async () => {
+                  if (selectedMemberIds.length === 0) return;
+                  if (!window.confirm('Delete all selected members? This cannot be undone.')) return;
+                  await supabase.from('clients').delete().in('id', selectedMemberIds);
+                  setMembers(members => members.filter(m => !selectedMemberIds.includes(m.id)));
+                  setSelectedMemberIds([]);
+                }}
+                disabled={selectedMemberIds.length === 0}
+                style={{ background: '#e53935', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600, opacity: selectedMemberIds.length === 0 ? 0.5 : 1, cursor: selectedMemberIds.length === 0 ? 'not-allowed' : 'pointer' }}
+              >
+                Delete Selected
+              </button>
             </div>
           </div>
         </div>
@@ -599,25 +678,19 @@ const AdminDashboard: React.FC = () => {
               <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Email</th>
               <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Name</th>
               <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Created At</th>
-              <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Actions</th>
+              {/* Comments column removed */}
             </tr>
           </thead>
           <tbody>
-            {pagedMembers.length === 0 ? (
-              <tr><td colSpan={3} style={{ textAlign: 'center', color: '#888' }}>No members found.</td></tr>
-            ) : (
-              pagedMembers.map(m => (
-                <tr key={m.id}>
-                  <td><input type="checkbox" checked={selectedMemberIds.includes(m.id)} onChange={e => setSelectedMemberIds(e.target.checked ? [...selectedMemberIds, m.id] : selectedMemberIds.filter(id => id !== m.id))} /></td>
-                  <td>{m.email}</td>
-                  <td>{m.name || `${m.first_name || ''} ${m.last_name || ''}`}</td>
-                  <td>{m.created_at ? new Date(m.created_at).toLocaleString() : '-'}</td>
-                  <td>
-                    {/* Remove the onClick handler for setEditingMemberId in the member table row, just show the row without edit button */}
-                  </td>
-                </tr>
-              ))
-            )}
+            {pagedMembers.map(member => (
+              <tr key={member.id}>
+                <td><input type="checkbox" checked={selectedMemberIds.includes(member.id)} onChange={e => setSelectedMemberIds(e.target.checked ? [...selectedMemberIds, member.id] : selectedMemberIds.filter(id => id !== member.id))} /></td>
+                <td>{member.email}</td>
+                <td>{member.name || `${member.first_name || ''} ${member.last_name || ''}`}</td>
+                <td>{member.created_at ? new Date(member.created_at).toLocaleString() : '-'}</td>
+                {/* Comments cell removed */}
+              </tr>
+            ))}
           </tbody>
         </table>
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
@@ -640,7 +713,7 @@ const AdminDashboard: React.FC = () => {
             <button onClick={() => exportCSV(filteredRecordings, ['id','video_url','transcript','created_at','client_id','user_id'], 'recordings.csv')} style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>
               Export Recordings CSV
             </button>
-            <button onClick={handleBulkDeleteRecordings} disabled={selectedRecordingIds.length === 0} style={{ background: '#e53935', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>
+            <button onClick={handleBulkDeleteRecordings} disabled={selectedRecordingIds.length === 0} style={{ background: '#e53935', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600, opacity: selectedRecordingIds.length === 0 ? 0.5 : 1, cursor: selectedRecordingIds.length === 0 ? 'not-allowed' : 'pointer' }}>
               Delete Selected
             </button>
           </div>
@@ -652,23 +725,25 @@ const AdminDashboard: React.FC = () => {
               <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Title</th>
               <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Play / URL</th>
               <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Transcript</th>
-              <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Actions</th>
+              {/* Comments column removed */}
             </tr>
           </thead>
           <tbody>
             {pagedRecordings.map(r => {
-              // Prefer first_name + last_name, then name, then '-'
+              // Use client name (not client_id)
               const clientObj = r.clients || {};
+              // Prefer first_name + last_name, then name, then '-'
               const clientName = (clientObj.first_name && clientObj.last_name)
                 ? `${clientObj.first_name} ${clientObj.last_name}`
                 : (clientObj.name || '-');
-              const displayName = r.profiles?.display_name || '-';
+              // Use display_name from profiles if available, else '-'
+              const displayName = (r.profiles && r.profiles.display_name) ? r.profiles.display_name : '-';
               const createdAt = r.created_at ? new Date(r.created_at).toLocaleString() : '-';
               return (
                 <tr key={r.id}>
                   <td><input type="checkbox" checked={selectedRecordingIds.includes(r.id)} onChange={e => setSelectedRecordingIds(e.target.checked ? [...selectedRecordingIds, r.id] : selectedRecordingIds.filter(id => id !== r.id))} /></td>
                   <td>
-                    <div>{clientName}</div>
+                    <div style={{ fontWeight: 600 }}>{clientName}</div>
                     <div style={{ color: '#888', fontSize: 13 }}>By: {displayName}</div>
                     <div style={{ color: '#888', fontSize: 13 }}>{createdAt}</div>
                   </td>
@@ -676,16 +751,24 @@ const AdminDashboard: React.FC = () => {
                     {r.video_url ? (
                       <>
                         <button onClick={() => window.open(r.video_url, '_blank')} style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600, marginRight: 8 }}>Play</button>
-                        <a href={r.video_url} target="_blank" rel="noopener noreferrer" style={{ color: '#1976d2', textDecoration: 'underline', fontSize: 14 }}>Get URL</a>
+                        <button
+                          onClick={async (e) => {
+                            e.preventDefault();
+                            await navigator.clipboard.writeText(r.video_url);
+                            setCopiedUrlId(r.id);
+                            setTimeout(() => setCopiedUrlId(null), 1200);
+                          }}
+                          style={{ color: '#1976d2', background: 'none', border: 'none', textDecoration: 'underline', fontSize: 14, cursor: 'pointer', position: 'relative' }}
+                        >
+                          {copiedUrlId === r.id ? 'Copied!' : 'Get URL'}
+                        </button>
                       </>
                     ) : (
                       <span style={{ color: '#888' }}>No video</span>
                     )}
                   </td>
                   <td style={{ maxWidth: 320, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{r.transcript || '-'}</td>
-                  <td>
-                    <button onClick={() => handleDeleteRecording(r.id)} style={{ background: '#e53935', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 13 }}>Delete</button>
-                  </td>
+                  {/* Comments cell removed */}
                 </tr>
               );
             })}
@@ -732,6 +815,31 @@ const AdminDashboard: React.FC = () => {
             ))}
         </ul>
       </div>
+      {errorPopup.open && (
+  <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#0008', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ background: '#fff', borderRadius: 8, padding: 24, minWidth: 340, maxWidth: 600, boxShadow: '0 2px 16px #0003', display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
+      <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 12 }}>Error</div>
+      <textarea
+        value={errorPopup.message}
+        readOnly
+        style={{ width: '100%', minHeight: 120, fontSize: 14, marginBottom: 12, fontFamily: 'monospace', resize: 'vertical' }}
+        onFocus={e => e.target.select()}
+      />
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <button
+          onClick={() => {
+            navigator.clipboard.writeText(errorPopup.message);
+          }}
+          style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 18px', fontWeight: 600 }}
+        >Copy</button>
+        <button
+          onClick={() => setErrorPopup({ open: false, message: '' })}
+          style={{ background: '#888', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 18px', fontWeight: 600 }}
+        >Close</button>
+      </div>
+    </div>
+  </div>
+)}
     </>
   );
 };

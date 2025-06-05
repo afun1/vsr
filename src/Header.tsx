@@ -72,7 +72,17 @@ const Header: React.FC = () => {
         <a
           href={role === 'admin' ? 'https://sr-nine-red.vercel.app/admin' : 'https://sr-nine-red.vercel.app/user'}
           style={{
-            background: '#1976d2', color: '#fff', fontWeight: 700, border: 'none', borderRadius: 6, padding: '8px 24px', fontSize: 16, cursor: 'pointer', boxShadow: '0 2px 8px #1976d222', textDecoration: 'none', marginRight: 16
+            background: 'transparent',
+            color: '#1976d2', // Match other link color
+            fontWeight: 700,
+            border: 'none',
+            borderRadius: 6,
+            padding: '8px 24px',
+            fontSize: 16,
+            cursor: 'pointer',
+            boxShadow: 'none',
+            textDecoration: 'none',
+            marginRight: 16
           }}
         >
           Home

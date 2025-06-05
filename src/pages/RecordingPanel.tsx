@@ -41,6 +41,9 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
   const [liveStream, setLiveStream] = useState<MediaStream | null>(null);
   const liveVideoRef = useRef<HTMLVideoElement | null>(null);
   const [recordingError, setRecordingError] = useState<string | null>(null);
+  // State for stopped recording
+  const [stoppedRecordingBlob, setStoppedRecordingBlob] = useState<Blob | null>(null);
+  const [stoppedRecordingUrl, setStoppedRecordingUrl] = useState<string | null>(null);
 
   // When switching memberMode, reset search and suggestions state
   useEffect(() => {
@@ -130,67 +133,8 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
   }, [liveStream, recording]);
 
   const handleStartRecording = async () => {
-    setRecordingError(null); // Reset error on each attempt
-    let finalClientId = clientId;
-    if (memberMode === 'existing') {
-      if (!clientId) {
-        alert('Please select a member before starting a recording.');
-        return;
-      }
-      // --- Verify client exists in DB before proceeding ---
-      try {
-        const { data, error } = await supabase.from('clients').select('id').eq('id', clientId).single();
-        if (error || !data) {
-          setRecordingError('Selected member does not exist. Please select a valid member.');
-          localStorage.removeItem('lastMemberId');
-          setClientId(null);
-          return;
-        }
-      } catch (err) {
-        setRecordingError('Error verifying member: ' + (err instanceof Error ? err.message : String(err)));
-        return;
-      }
-      console.log('[RecordingPanel] Using existing clientId:', clientId);
-    } else {
-      // --- NEW: Insert new client before recording ---
-      if (!newFirstName.trim() || !newLastName.trim() || !newEmail.trim() || !newUsername.trim() || !newPhone.trim()) {
-        setNewMemberError('All fields are required.');
-        return;
-      }
-      setNewMemberError(null);
-      setNewMemberLoading(true);
-      try {
-        const { data, error } = await supabase.from('clients').insert({
-          name: `${newFirstName.trim()} ${newLastName.trim()}`,
-          email: newEmail.trim(),
-          sparky_username: newUsername.trim(),
-          phone: newPhone.trim(),
-        }).select('id').single();
-        if (error) {
-          setNewMemberError('Failed to create new member: ' + error.message);
-          setNewMemberLoading(false);
-          return;
-        }
-        if (!data?.id) {
-          setNewMemberError('Failed to create new member: No ID returned');
-          setNewMemberLoading(false);
-          return;
-        }
-        setClientId(data.id);
-        localStorage.setItem('lastMemberId', data.id);
-        setNewMemberLoading(false);
-        finalClientId = data.id;
-        console.log('[RecordingPanel] Created new client with id:', data.id);
-      } catch (err) {
-        setNewMemberError('Unexpected error creating member: ' + (err instanceof Error ? err.message : String(err)));
-        setNewMemberLoading(false);
-        return;
-      }
-    }
-    if (!finalClientId) {
-      setRecordingError('No clientId available for recording.');
-      return;
-    }
+    setRecordingError(null);
+    setStoppedRecordingUrl(null);
     // ...existing code for screen/mic capture and recording...
     try {
       // 1. Get screen stream (video, maybe system audio)
@@ -249,71 +193,12 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         console.log('[RecordingPanel] mediaRecorder.onstop fired');
         const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
         const url = URL.createObjectURL(blob);
-        console.log('[RecordingPanel] setRecordedVideoUrl with', url);
-        // --- Upload to Supabase Storage and insert DB row ---
-        try {
-          // Get user id
-          const { data: userData } = await supabase.auth.getUser();
-          const userId = userData?.user?.id;
-          if (!userId || !finalClientId) {
-            console.error('No userId or clientId for upload', { userId, finalClientId });
-            setRecordingError('No userId or clientId for upload');
-            return;
-          }
-          const fileName = `${userId}-${Date.now()}.webm`;
-          // Upload to storage
-          const { error: storageError } = await supabase.storage.from('recordings').upload(fileName, blob, { upsert: true, contentType: 'video/webm' });
-          if (storageError) {
-            console.error('Failed to upload video:', storageError.message);
-            setRecordingError('Failed to upload video: ' + storageError.message);
-            return;
-          }
-          // Get public URL
-          const { data: publicUrlData } = supabase.storage.from('recordings').getPublicUrl(fileName);
-          const videoPublicUrl = publicUrlData?.publicUrl;
-          // Insert into recordings table
-          const { error: dbError } = await supabase.from('recordings').insert({
-            user_id: userId,
-            client_id: finalClientId,
-            video_url: videoPublicUrl,
-            transcript: '', // PATCH: placeholder transcript to satisfy NOT NULL constraint
-            created_at: new Date().toISOString(),
-          });
-          if (dbError) {
-            console.error('Failed to insert recording row:', dbError.message);
-            setRecordingError('Failed to insert recording row: ' + dbError.message);
-          } else {
-            console.log('Recording uploaded and saved to DB!');
-            // --- Poll for new recording to appear in DB, then trigger preview ---
-            let found = false;
-            const maxAttempts = 10; // 5 seconds max
-            let attempts = 0;
-            while (!found && attempts < maxAttempts) {
-              const { data: recs } = await supabase
-                .from('recordings')
-                .select('video_url')
-                .eq('user_id', userId)
-                .order('created_at', { ascending: false })
-                .limit(5);
-              if (recs && recs.some((r: { video_url: string }) => r.video_url === videoPublicUrl)) {
-                found = true;
-                setRecordedVideoUrl(videoPublicUrl); // Show preview and trigger auto-select
-                window.dispatchEvent(new CustomEvent('sparky-auto-select-recording', { detail: videoPublicUrl }));
-                break;
-              }
-              await new Promise(res => setTimeout(res, 500));
-              attempts++;
-            }
-            if (!found) {
-              // Fallback: still show preview
-              setRecordedVideoUrl(videoPublicUrl);
-              window.dispatchEvent(new CustomEvent('sparky-auto-select-recording', { detail: videoPublicUrl }));
-            }
-          }
-        } catch (err) {
-          console.error('Unexpected error during upload:', err);
-          setRecordingError('Unexpected error during upload: ' + (err instanceof Error ? err.message : String(err)));
-        }
+        console.log('[RecordingPanel] stoppedRecordingBlob:', blob, 'stoppedRecordingUrl:', url);
+        setStoppedRecordingBlob(blob);
+        setStoppedRecordingUrl(url);
+        setRecording(false);
+        setLiveStream(null);
+        // Do NOT upload or insert to DB here!
       };
       mediaRecorder.start();
       // Stop tracks when recording is stopped
@@ -326,6 +211,111 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
       setRecordingError('Unexpected error: ' + (err instanceof Error ? err.message : String(err)));
       setRecording(false);
       setLiveStream(null);
+    }
+  };
+
+  // Upload handler: called after form is completed
+  const handleSaveRecordingDetails = async () => {
+    setRecordingError(null);
+    let finalClientId = clientId;
+    if (!stoppedRecordingBlob || !stoppedRecordingUrl) {
+      setRecordingError('No recording to upload.');
+      return;
+    }
+    if (memberMode === 'existing') {
+      if (!clientId) {
+        setRecordingError('Please select a member before saving.');
+        return;
+      }
+      // Verify client exists
+      try {
+        const { data, error } = await supabase.from('clients').select('id').eq('id', clientId).single();
+        if (error || !data) {
+          setRecordingError('Selected member does not exist.');
+          localStorage.removeItem('lastMemberId');
+          setClientId(null);
+          return;
+        }
+      } catch (err) {
+        setRecordingError('Error verifying member: ' + (err instanceof Error ? err.message : String(err)));
+        return;
+      }
+    } else {
+      // New member creation
+      if (!newFirstName.trim() || !newLastName.trim() || !newEmail.trim() || !newUsername.trim() || !newPhone.trim()) {
+        setNewMemberError('All fields are required.');
+        return;
+      }
+      setNewMemberError(null);
+      setNewMemberLoading(true);
+      try {
+        const { data, error } = await supabase.from('clients').insert({
+          name: `${newFirstName.trim()} ${newLastName.trim()}`,
+          email: newEmail.trim(),
+          sparky_username: newUsername.trim(),
+          phone: newPhone.trim(),
+        }).select('id').single();
+        if (error) {
+          setNewMemberError('Failed to create new member: ' + error.message);
+          setNewMemberLoading(false);
+          return;
+        }
+        if (!data?.id) {
+          setNewMemberError('Failed to create new member: No ID returned');
+          setNewMemberLoading(false);
+          return;
+        }
+        setClientId(data.id);
+        localStorage.setItem('lastMemberId', data.id);
+        setNewMemberLoading(false);
+        finalClientId = data.id;
+        console.log('[RecordingPanel] Created new client with id:', data.id);
+      } catch (err) {
+        setNewMemberError('Unexpected error creating member: ' + (err instanceof Error ? err.message : String(err)));
+        setNewMemberLoading(false);
+        return;
+      }
+    }
+    // Upload to Supabase Storage and insert DB row
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData?.user?.id;
+      if (!userId) {
+        setRecordingError('No userId for upload');
+        return;
+      }
+      const fileName = `${userId}-${Date.now()}.webm`;
+      const { error: storageError } = await supabase.storage.from('recordings').upload(fileName, stoppedRecordingBlob, { upsert: true, contentType: 'video/webm' });
+      if (storageError) {
+        setRecordingError('Failed to upload video: ' + storageError.message);
+        return;
+      }
+      const { data: publicUrlData } = supabase.storage.from('recordings').getPublicUrl(fileName);
+      const videoPublicUrl = publicUrlData?.publicUrl;
+      const { error: dbError } = await supabase.from('recordings').insert({
+        user_id: userId,
+        client_id: finalClientId,
+        video_url: videoPublicUrl,
+        transcript: '',
+        created_at: new Date().toISOString(),
+      });
+      if (dbError) {
+        setRecordingError('Failed to insert recording row: ' + dbError.message);
+      } else {
+        setRecordedVideoUrl(videoPublicUrl);
+        window.dispatchEvent(new CustomEvent('sparky-auto-select-recording', { detail: videoPublicUrl }));
+        setStoppedRecordingBlob(null);
+        setStoppedRecordingUrl(null);
+        setClientId(null);
+        setSearch('');
+        setNewFirstName('');
+        setNewLastName('');
+        setNewEmail('');
+        setNewUsername('');
+        setNewPhone('');
+      }
+    } catch (err) {
+      setRecordingError('Unexpected error during upload: ' + (err instanceof Error ? err.message : String(err)));
     }
   };
 
@@ -409,6 +399,12 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
   return (
     <div style={{ width: 480, background: '#fff', borderRadius: 10, boxShadow: '0 2px 12px #0001', padding: 24, marginBottom: 32 }}>
       <h3>New Recording</h3>
+      {/* DEBUG OUTPUT */}
+      <div style={{ color: '#888', fontSize: 13, marginBottom: 8 }}>
+        <div>stoppedRecordingUrl: {String(stoppedRecordingUrl)}</div>
+        <div>stoppedRecordingBlob: {stoppedRecordingBlob ? 'yes' : 'no'}</div>
+        <div>recordingError: {recordingError || 'none'}</div>
+      </div>
       {/* Audio device selection (always at the top) */}
       <div style={{ marginTop: 0, marginBottom: 8 }}>
         <label style={{ fontWeight: 600 }}>Microphone/Input Device:</label>
@@ -465,11 +461,11 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         <span style={{ marginLeft: 8, fontSize: 14 }}>{Math.round(systemGain * 100)}%</span>
       </div>
       {/* Recording controls and preview */}
-      <div style={{ display: 'flex', marginTop: 32, justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 32 }}>
         {recording && liveStream ? (
           <>
             {/* Live preview of the window being recorded, always visible in the workspace */}
-            <video ref={liveVideoRef} style={{ width: 400, height: 220, borderRadius: 8, background: '#000', marginRight: 24 }} autoPlay muted />
+            <video ref={liveVideoRef} style={{ width: 400, height: 220, borderRadius: 8, background: '#000', marginBottom: 24 }} autoPlay muted />
             <button
               onClick={() => {
                 if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
@@ -478,27 +474,158 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
                 setRecording(false);
                 setLiveStream(null);
               }}
-              style={{ background: '#dc3545', color: '#fff', fontWeight: 700, border: 'none', borderRadius: 6, padding: '12px 28px', fontSize: 18, cursor: 'pointer', boxShadow: '0 2px 8px #dc354522' }}
+              style={{ background: '#dc3545', color: '#fff', fontWeight: 700, border: 'none', borderRadius: 6, padding: '12px 28px', fontSize: 18, cursor: 'pointer', boxShadow: '0 2px 8px #dc354522', marginTop: 16 }}
             >
               Stop Recording
             </button>
-            <button
-              onClick={() => {
-                if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-                  mediaRecorderRef.current.stop();
-                }
-                setRecording(false);
-                setLiveStream(null);
-              }}
-              style={{ background: '#007bff', color: '#fff', fontWeight: 700, border: 'none', borderRadius: 6, padding: '12px 28px', fontSize: 18, cursor: 'pointer', boxShadow: '0 2px 8px #007bff22', marginLeft: 'auto' }}
-            >
-              Cancel
-            </button>
           </>
+        ) : stoppedRecordingUrl ? (
+          // After stop, always show preview and member forms if stoppedRecordingUrl is set
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
+            <video src={stoppedRecordingUrl || undefined} controls style={{ width: 400, height: 220, borderRadius: 8, background: '#000', marginBottom: 24 }} />
+            <div style={{ width: '100%', maxWidth: 400, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              {/* Member info form, centered below video */}
+              <div style={{ display: 'flex', gap: 24, marginBottom: 12, marginTop: 0 }}>
+                <label style={{ fontWeight: 500 }}>
+                  <input
+                    type="radio"
+                    name="memberMode"
+                    value="existing"
+                    checked={memberMode === 'existing'}
+                    onChange={() => setMemberMode('existing')}
+                    style={{ marginRight: 6 }}
+                  />
+                  Existing Member
+                </label>
+                <label style={{ fontWeight: 500 }}>
+                  <input
+                    type="radio"
+                    name="memberMode"
+                    value="new"
+                    checked={memberMode === 'new'}
+                    onChange={() => setMemberMode('new')}
+                    style={{ marginRight: 6 }}
+                  />
+                  New Member
+                </label>
+              </div>
+              {memberMode === 'existing' && (
+                <div style={{ marginBottom: 16, width: '100%' }}>
+                  <label htmlFor="existing-member-search">Search Member:</label>
+                  <input
+                    id="existing-member-search"
+                    type="text"
+                    value={search}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                      setSearch(e.target.value);
+                      setClientId(null);
+                    }}
+                    placeholder="Search by name or email"
+                    autoComplete="off"
+                    style={{ width: '100%', marginBottom: 6 }}
+                  />
+                  {clientSuggestions.length > 0 && (
+                    <select
+                      value={clientId || ''}
+                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                        setClientId(e.target.value || null);
+                        if (e.target.value) {
+                          localStorage.setItem('lastMemberId', e.target.value);
+                          const selected = clientSuggestions.find((c: { id: string; name?: string; email?: string; sparky_username?: string }) => c.id === e.target.value);
+                          setSearch(selected ? (selected.name || selected.email || selected.sparky_username || '') : '');
+                        } else {
+                          localStorage.removeItem('lastMemberId');
+                          setSearch('');
+                        }
+                      }}
+                      style={{ width: '100%', padding: 8, borderRadius: 4, border: '1px solid #ccc', background: '#fafbfc', marginTop: 4 }}
+                      size={5}
+                    >
+                      <option value="">{suggestionsLoading ? 'Loading...' : 'Select a member'}</option>
+                      {clientSuggestions.map((client: { id: string; name?: string; email?: string; sparky_username?: string }) => (
+                        <option key={client.id} value={client.id}>
+                          {client.name || client.email || client.sparky_username || '(No Name)'}
+                          {client.email ? ` (${client.email})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {suggestionsError && (
+                    <div style={{ color: 'red', fontSize: 13, marginTop: 4 }}>{suggestionsError}</div>
+                  )}
+                  {search.trim().length >= 1 && !suggestionsLoading && clientSuggestions.length === 0 && !suggestionsError && (
+                    <div style={{ color: '#888', fontSize: 13, marginTop: 4 }}>No members found.</div>
+                  )}
+                </div>
+              )}
+              {memberMode === 'new' && (
+                <div style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 10, width: '100%' }}>
+                  <label>
+                    First Name:
+                    <input
+                      type="text"
+                      value={newFirstName}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewFirstName(e.target.value)}
+                      style={{ width: '100%' }}
+                      autoComplete="off"
+                    />
+                  </label>
+                  <label>
+                    Last Name:
+                    <input
+                      type="text"
+                      value={newLastName}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewLastName(e.target.value)}
+                      style={{ width: '100%' }}
+                      autoComplete="off"
+                    />
+                  </label>
+                  <label>
+                    Email:
+                    <input
+                      type="email"
+                      value={newEmail}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewEmail(e.target.value)}
+                      style={{ width: '100%' }}
+                      autoComplete="off"
+                    />
+                  </label>
+                  <label>
+                    Sparky Username:
+                    <input
+                      type="text"
+                      value={newUsername}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewUsername(e.target.value)}
+                      style={{ width: '100%' }}
+                      autoComplete="off"
+                    />
+                  </label>
+                  <label>
+                    Phone:
+                    <input
+                      type="tel"
+                      value={newPhone}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPhone(e.target.value)}
+                      style={{ width: '100%' }}
+                      autoComplete="off"
+                    />
+                  </label>
+                  {newMemberError && <div style={{ color: 'red', fontSize: 13 }}>{newMemberError}</div>}
+                </div>
+              )}
+              <button
+                onClick={handleSaveRecordingDetails}
+                disabled={memberMode === 'existing' ? !clientId : newMemberLoading || !newFirstName.trim() || !newLastName.trim() || !newEmail.trim() || !newUsername.trim() || !newPhone.trim()}
+                style={{ background: '#28a745', color: '#fff', fontWeight: 700, border: 'none', borderRadius: 6, padding: '12px 28px', fontSize: 18, cursor: (memberMode === 'existing' ? !clientId : newMemberLoading || !newFirstName.trim() || !newLastName.trim() || !newEmail.trim() || !newUsername.trim() || !newPhone.trim()) ? 'not-allowed' : 'pointer', boxShadow: '0 2px 8px #28a74522', marginTop: 12 }}
+              >
+                Save Details
+              </button>
+            </div>
+          </div>
         ) : (
           <>
             <button
-              onClick={() => setRecording(true)}
+              onClick={handleStartRecording}
               style={{ background: '#28a745', color: '#fff', fontWeight: 700, border: 'none', borderRadius: 6, padding: '12px 28px', fontSize: 18, cursor: 'pointer', boxShadow: '0 2px 8px #28a74522' }}
             >
               Start Recording
@@ -507,149 +634,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
           </>
         )}
       </div>
-      {/* After recording is stopped, show member selection/creation forms before upload */}
-      {!recording && !liveStream && (
-        <>
-          <div style={{ display: 'flex', gap: 24, marginBottom: 12, marginTop: 32 }}>
-            <label style={{ fontWeight: 500 }}>
-              <input
-                type="radio"
-                name="memberMode"
-                value="existing"
-                checked={memberMode === 'existing'}
-                onChange={() => setMemberMode('existing')}
-                style={{ marginRight: 6 }}
-              />
-              Existing Member
-            </label>
-            <label style={{ fontWeight: 500 }}>
-              <input
-                type="radio"
-                name="memberMode"
-                value="new"
-                checked={memberMode === 'new'}
-                onChange={() => setMemberMode('new')}
-                style={{ marginRight: 6 }}
-              />
-              New Member
-            </label>
-          </div>
-          {/* Member Search Field and Dropdown (only for existing member mode) */}
-          {memberMode === 'existing' && (
-            <div style={{ marginBottom: 16 }}>
-              <label htmlFor="existing-member-search">Search Member:</label>
-              <input
-                id="existing-member-search"
-                type="text"
-                value={search}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                  setSearch(e.target.value);
-                  setClientId(null);
-                }}
-                placeholder="Search by name or email"
-                autoComplete="off"
-                style={{ width: '100%', marginBottom: 6 }}
-              />
-              {clientSuggestions.length > 0 && (
-                <select
-                  value={clientId || ''}
-                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
-                    setClientId(e.target.value || null);
-                    if (e.target.value) {
-                      localStorage.setItem('lastMemberId', e.target.value);
-                      const selected = clientSuggestions.find((c: { id: string; name?: string; email?: string; sparky_username?: string }) => c.id === e.target.value);
-                      setSearch(selected ? (selected.name || selected.email || selected.sparky_username || '') : '');
-                    } else {
-                      localStorage.removeItem('lastMemberId');
-                      setSearch('');
-                    }
-                  }}
-                  style={{ width: '100%', padding: 8, borderRadius: 4, border: '1px solid #ccc', background: '#fafbfc', marginTop: 4 }}
-                  size={5}
-                >
-                  <option value="">{suggestionsLoading ? 'Loading...' : 'Select a member'}</option>
-                  {clientSuggestions.map((client: { id: string; name?: string; email?: string; sparky_username?: string }) => (
-                    <option key={client.id} value={client.id}>
-                      {client.name || client.email || client.sparky_username || '(No Name)'}
-                      {client.email ? ` (${client.email})` : ''}
-                    </option>
-                  ))}
-                </select>
-              )}
-              {suggestionsError && (
-                <div style={{ color: 'red', fontSize: 13, marginTop: 4 }}>{suggestionsError}</div>
-              )}
-              {search.trim().length >= 1 && !suggestionsLoading && clientSuggestions.length === 0 && !suggestionsError && (
-                <div style={{ color: '#888', fontSize: 13, marginTop: 4 }}>No members found.</div>
-              )}
-            </div>
-          )}
-          {/* New Member Form (only if selected) */}
-          {memberMode === 'new' && (
-            <div style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <label>
-                First Name:
-                <input
-                  type="text"
-                  value={newFirstName}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewFirstName(e.target.value)}
-                  style={{ width: '100%' }}
-                  autoComplete="off"
-                />
-              </label>
-              <label>
-                Last Name:
-                <input
-                  type="text"
-                  value={newLastName}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewLastName(e.target.value)}
-                  style={{ width: '100%' }}
-                  autoComplete="off"
-                />
-              </label>
-              <label>
-                Email:
-                <input
-                  type="email"
-                  value={newEmail}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewEmail(e.target.value)}
-                  style={{ width: '100%' }}
-                  autoComplete="off"
-                />
-              </label>
-              <label>
-                Sparky Username:
-                <input
-                  type="text"
-                  value={newUsername}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewUsername(e.target.value)}
-                  style={{ width: '100%' }}
-                  autoComplete="off"
-                />
-              </label>
-              <label>
-                Phone:
-                <input
-                  type="tel"
-                  value={newPhone}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPhone(e.target.value)}
-                  style={{ width: '100%' }}
-                  autoComplete="off"
-                />
-              </label>
-              {newMemberError && <div style={{ color: 'red', fontSize: 13 }}>{newMemberError}</div>}
-            </div>
-          )}
-          {/* Upload button (enabled only if member info is complete) */}
-          <button
-            onClick={handleStartRecording}
-            disabled={memberMode === 'existing' ? !clientId : newMemberLoading || !newFirstName.trim() || !newLastName.trim() || !newEmail.trim() || !newUsername.trim() || !newPhone.trim()}
-            style={{ background: '#28a745', color: '#fff', fontWeight: 700, border: 'none', borderRadius: 6, padding: '12px 28px', fontSize: 18, cursor: (memberMode === 'existing' ? !clientId : newMemberLoading || !newFirstName.trim() || !newLastName.trim() || !newEmail.trim() || !newUsername.trim() || !newPhone.trim()) ? 'not-allowed' : 'pointer', boxShadow: '0 2px 8px #28a74522', marginTop: 12 }}
-          >
-            Upload Recording
-          </button>
-        </>
-      )}
       {/* Hidden video for PiP */}
       {recording && liveStream && (
         <video

@@ -101,22 +101,18 @@ const UserDashboard: React.FC = () => {
           muted
         />
       )}
-      {recording && liveStream ? (
-        null
-      ) : (
-        <main style={{ width: '100%', maxWidth: 1200, margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', padding: 32, position: 'relative', minHeight: '100vh', background: '#f7f8fa', fontSize: 12 }}>
-          <div style={{ height: 64 }} /> {/* Spacer for header */}
-          <h2 style={{ margin: 0, fontSize: 32, textAlign: 'center', fontWeight: 700, marginBottom: 32 }}>User Dashboard</h2>
-          {displayName && (
-            <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 16 }}>Welcome, {displayName}!</div>
-          )}
-          {/* New Recording Panel (always visible) */}
-          <RecordingPanel setRecordedVideoUrl={handleSetRecordedVideoUrl} onStartLiveScreen={handleStartLiveScreen} />
-          {/* Recording Preview and List */}
-          <ScreenRecorder recordedVideoUrl={recordedVideoUrl} />
-          {/* Remove local preview video here to avoid double preview and confusion */}
-        </main>
-      )}
+      <main style={{ width: '100%', maxWidth: 1200, margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', padding: 32, position: 'relative', minHeight: '100vh', background: '#f7f8fa', fontSize: 12 }}>
+        <div style={{ height: 64 }} /> {/* Spacer for header */}
+        <h2 style={{ margin: 0, fontSize: 32, textAlign: 'center', fontWeight: 700, marginBottom: 32 }}>User Dashboard</h2>
+        {displayName && (
+          <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 16 }}>Welcome, {displayName}!</div>
+        )}
+        {/* New Recording Panel (always visible) */}
+        <RecordingPanel setRecordedVideoUrl={handleSetRecordedVideoUrl} onStartLiveScreen={handleStartLiveScreen} />
+        {/* Recording Preview and List */}
+        <ScreenRecorder recordedVideoUrl={recordedVideoUrl} />
+        {/* Remove local preview video here to avoid double preview and confusion */}
+      </main>
     </>
   );
 };

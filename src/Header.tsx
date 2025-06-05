@@ -6,7 +6,6 @@ const Header: React.FC = () => {
   const [showRecordingScreen, setShowRecordingScreen] = useState(false);
   const { user, role } = useAuth();
   const [displayName, setDisplayName] = useState('');
-  const [isRecording, setIsRecording] = useState(false);
 
   useEffect(() => {
     // Listen for custom event from ScreenRecorder
@@ -30,14 +29,6 @@ const Header: React.FC = () => {
     };
     fetchDisplayName();
   }, [user]);
-
-  useEffect(() => {
-    const handler = (e: any) => {
-      setIsRecording(!!(e && e.detail));
-    };
-    window.addEventListener('sparky-recording-visibility', handler);
-    return () => window.removeEventListener('sparky-recording-visibility', handler);
-  }, []);
 
   return (
     <header style={{
@@ -78,22 +69,13 @@ const Header: React.FC = () => {
       </div>
       {/* Center column (Stop and PiP buttons) */}
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
-        {isRecording && (
-          <>
-            <button
-              onClick={() => window.dispatchEvent(new CustomEvent('sparky-stop-recording'))}
-              style={{ background: '#dc3545', color: '#fff', fontWeight: 700, border: 'none', borderRadius: 6, padding: '8px 24px', fontSize: 16, cursor: 'pointer', boxShadow: '0 2px 8px #dc354522' }}
-            >
-              Stop
-            </button>
-            <button
-              onClick={() => window.dispatchEvent(new CustomEvent('sparky-pip-toggle'))}
-              style={{ background: '#007bff', color: '#fff', fontWeight: 700, border: 'none', borderRadius: 6, padding: '8px 24px', fontSize: 16, cursor: 'pointer', boxShadow: '0 2px 8px #007bff22' }}
-            >
-              PiP
-            </button>
-          </>
-        )}
+        {/* Removed stop button. Only PiP button remains. */}
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent('sparky-pip-toggle'))}
+          style={{ background: '#007bff', color: '#fff', fontWeight: 700, border: 'none', borderRadius: 6, padding: '8px 24px', fontSize: 16, cursor: 'pointer', boxShadow: '0 2px 8px #007bff22' }}
+        >
+          PiP
+        </button>
       </div>
       {/* Right column (user/profile/logout) */}
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>

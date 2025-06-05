@@ -70,8 +70,10 @@ const Header: React.FC = () => {
       {/* Right column (user/profile/logout) */}
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>
         <a
-          href={role === 'admin' ? 'https://sr-theta.vercel.app/admin' : 'https://sr-theta.vercel.app/user'}
-          style={{ color: '#1976d2', fontWeight: 600, fontSize: 16, textDecoration: 'none', marginRight: 8 }}
+          href={role === 'admin' ? 'https://sr-nine-red.vercel.app/admin' : 'https://sr-nine-red.vercel.app/user'}
+          style={{
+            background: '#1976d2', color: '#fff', fontWeight: 700, border: 'none', borderRadius: 6, padding: '8px 24px', fontSize: 16, cursor: 'pointer', boxShadow: '0 2px 8px #1976d222', textDecoration: 'none', marginRight: 16
+          }}
         >
           Home
         </a>

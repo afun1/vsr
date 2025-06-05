@@ -351,21 +351,6 @@ const AdminDashboard: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  // --- Heal all blank display names (admin only) ---
-  const healBlankDisplayNames = async () => {
-    if (!window.confirm('This will set display_name to the email prefix for all users with a blank display name. Continue?')) return;
-    const { data: blankUsers, error } = await supabase.from('profiles').select('id, email').or('display_name.is.null,display_name.eq.""');
-    if (error) { alert('Error fetching users: ' + error.message); return; }
-    for (const u of blankUsers) {
-      const prefix = (u.email || '').split('@')[0] || 'User';
-      await supabase.from('profiles').update({ display_name: prefix }).eq('id', u.id);
-    }
-    alert('Healed ' + blankUsers.length + ' users. Refresh to see changes.');
-    // Optionally, refresh users list
-    const { data, error: fetchError } = await supabase.from('profiles').select('id, email, display_name, role');
-    if (!fetchError && data) setUsers(data);
-  };
-
   // --- PAGINATION HELPERS ---
   // Users
   const userPageCount = Math.max(1, Math.ceil(filteredUsers.length / USERS_PER_PAGE));

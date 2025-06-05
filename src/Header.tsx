@@ -3,18 +3,8 @@ import { supabase } from './auth/supabaseClient';
 import { useAuth } from './auth/AuthContext';
 
 const Header: React.FC = () => {
-  const [showRecordingScreen, setShowRecordingScreen] = useState(false);
   const { user, role } = useAuth();
   const [displayName, setDisplayName] = useState('');
-
-  useEffect(() => {
-    // Listen for custom event from ScreenRecorder
-    const handler = (e: any) => {
-      setShowRecordingScreen(!!e.detail);
-    };
-    window.addEventListener('sparky-recording-visibility', handler);
-    return () => window.removeEventListener('sparky-recording-visibility', handler);
-  }, []);
 
   useEffect(() => {
     const fetchDisplayName = async () => {

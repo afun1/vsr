@@ -98,7 +98,7 @@ const Header: React.FC = () => {
       {/* Right column (user/profile/logout) */}
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>
         <a
-          href={role === 'admin' ? '/admin' : '/user'}
+          href={role === 'admin' ? 'https://sr-theta.vercel.app/admin' : 'https://sr-theta.vercel.app/user'}
           style={{ color: '#1976d2', fontWeight: 600, fontSize: 16, textDecoration: 'none', marginRight: 8 }}
         >
           Home

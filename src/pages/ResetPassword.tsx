@@ -21,6 +21,7 @@ const ResetPassword: React.FC = () => {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [type, setType] = useState<string | null>(null);
   const [email, setEmail] = useState<string>('');
+  const [sessionChecked, setSessionChecked] = useState(false);
   const navigate = useNavigate();
 
   // Reactively parse hash and search params
@@ -38,25 +39,34 @@ const ResetPassword: React.FC = () => {
     return () => window.removeEventListener('hashchange', updateFromLocation);
   }, []);
 
-  // On mount, try to get the email from the session if possible
+  // Wait for Supabase to process the session from the URL hash
   useEffect(() => {
-    (async () => {
+    const checkSession = async () => {
+      // Wait a bit for Supabase to process the hash
+      await new Promise(res => setTimeout(res, 300));
       const { data: userData } = await supabase.auth.getUser();
       if (userData?.user?.email) setEmail(userData.user.email);
-    })();
+      setSessionChecked(true);
+    };
+    checkSession();
+    // Also listen for auth state changes
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user?.email) setEmail(session.user.email);
+      setSessionChecked(true);
+    });
+    return () => {
+      listener?.subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
-    if (accessToken === null) {
-      // Wait for hash to be processed
-      return;
-    }
+    if (!sessionChecked) return;
     if (!accessToken) {
       setError('No access_token in URL. You must use the link from your email.');
     } else {
       setError(null);
     }
-  }, [accessToken]);
+  }, [accessToken, sessionChecked]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -135,6 +145,7 @@ const ResetPassword: React.FC = () => {
           <div>type: {type}</div>
           <div>hash: {window.location.hash}</div>
           <div>email: {email}</div>
+          <div>sessionChecked: {String(sessionChecked)}</div>
         </div>
       </div>
     </div>

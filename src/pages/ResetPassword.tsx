@@ -18,25 +18,42 @@ const ResetPassword: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [type, setType] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  // Parse both search and hash params
-  const searchParams = new URLSearchParams(window.location.search);
-  const hashParams = parseHashParams(window.location.hash);
-  const access_token = hashParams.access_token || searchParams.get('access_token');
-  const type = hashParams.type || searchParams.get('type');
+  // Reactively parse hash and search params
+  useEffect(() => {
+    function updateFromLocation() {
+      const searchParams = new URLSearchParams(window.location.search);
+      const hashParams = parseHashParams(window.location.hash);
+      const token = hashParams.access_token || searchParams.get('access_token');
+      const t = hashParams.type || searchParams.get('type');
+      setAccessToken(token);
+      setType(t);
+    }
+    updateFromLocation();
+    window.addEventListener('hashchange', updateFromLocation);
+    return () => window.removeEventListener('hashchange', updateFromLocation);
+  }, []);
 
   useEffect(() => {
-    if (!access_token) {
-      setError('No access_token in URL. You must use the link from your email.');
+    if (accessToken === null) {
+      // Wait for hash to be processed
+      return;
     }
-  }, [access_token]);
+    if (!accessToken) {
+      setError('No access_token in URL. You must use the link from your email.');
+    } else {
+      setError(null);
+    }
+  }, [accessToken]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
-    if (!access_token) {
+    if (!accessToken) {
       setError('No access_token in URL. You must use the link from your email.');
       return;
     }
@@ -93,7 +110,7 @@ const ResetPassword: React.FC = () => {
         </form>
         {/* Debug info for troubleshooting */}
         <div style={{ marginTop: 16, fontSize: 12, color: '#888' }}>
-          <div>access_token: {access_token ? '[present]' : '[missing]'}</div>
+          <div>access_token: {accessToken ? '[present]' : '[missing]'}</div>
           <div>type: {type}</div>
           <div>hash: {window.location.hash}</div>
         </div>

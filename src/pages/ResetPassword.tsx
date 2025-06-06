@@ -22,6 +22,7 @@ const ResetPassword: React.FC = () => {
   const [type, setType] = useState<string | null>(null);
   const [email, setEmail] = useState<string>('');
   const [sessionChecked, setSessionChecked] = useState(false);
+  const [hashChecked, setHashChecked] = useState(false);
   const navigate = useNavigate();
 
   // Reactively parse hash and search params
@@ -33,6 +34,7 @@ const ResetPassword: React.FC = () => {
       const t = hashParams.type || searchParams.get('type');
       setAccessToken(token);
       setType(t);
+      setHashChecked(true);
     }
     updateFromLocation();
     window.addEventListener('hashchange', updateFromLocation);
@@ -43,7 +45,7 @@ const ResetPassword: React.FC = () => {
   useEffect(() => {
     const checkSession = async () => {
       // Wait a bit for Supabase to process the hash
-      await new Promise(res => setTimeout(res, 300));
+      await new Promise(res => setTimeout(res, 400));
       const { data: userData } = await supabase.auth.getUser();
       if (userData?.user?.email) setEmail(userData.user.email);
       setSessionChecked(true);
@@ -59,14 +61,15 @@ const ResetPassword: React.FC = () => {
     };
   }, []);
 
+  // Only show error if both hash and session have been checked
   useEffect(() => {
-    if (!sessionChecked) return;
+    if (!sessionChecked || !hashChecked) return;
     if (!accessToken) {
       setError('No access_token in URL. You must use the link from your email.');
     } else {
       setError(null);
     }
-  }, [accessToken, sessionChecked]);
+  }, [accessToken, sessionChecked, hashChecked]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,6 +108,15 @@ const ResetPassword: React.FC = () => {
       setTimeout(() => navigate('/login'), 2000);
     }
   };
+
+  // Show loading spinner until both hash and session are checked
+  if (!sessionChecked || !hashChecked) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
+        <div style={{ fontSize: 20, color: '#1976d2' }}>Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
@@ -146,6 +158,7 @@ const ResetPassword: React.FC = () => {
           <div>hash: {window.location.hash}</div>
           <div>email: {email}</div>
           <div>sessionChecked: {String(sessionChecked)}</div>
+          <div>hashChecked: {String(hashChecked)}</div>
         </div>
       </div>
     </div>

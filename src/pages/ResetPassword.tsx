@@ -20,6 +20,7 @@ const ResetPassword: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [type, setType] = useState<string | null>(null);
+  const [email, setEmail] = useState<string>('');
   const navigate = useNavigate();
 
   // Reactively parse hash and search params
@@ -35,6 +36,14 @@ const ResetPassword: React.FC = () => {
     updateFromLocation();
     window.addEventListener('hashchange', updateFromLocation);
     return () => window.removeEventListener('hashchange', updateFromLocation);
+  }, []);
+
+  // On mount, try to get the email from the session if possible
+  useEffect(() => {
+    (async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      if (userData?.user?.email) setEmail(userData.user.email);
+    })();
   }, []);
 
   useEffect(() => {
@@ -64,14 +73,26 @@ const ResetPassword: React.FC = () => {
     setLoading(true);
     // Supabase will use the session from the access_token in the URL fragment
     const { error } = await supabase.auth.updateUser({ password });
-    setLoading(false);
     if (error) {
+      setLoading(false);
       setError(error.message);
+      return;
+    }
+    // Try to log in with the new password (if email is available)
+    if (email) {
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      setLoading(false);
+      if (signInError) {
+        setSuccess('Password updated! Please log in with your new password.');
+        setTimeout(() => navigate('/login'), 2000);
+      } else {
+        setSuccess('Password updated! Logging you in...');
+        setTimeout(() => navigate('/user'), 1200);
+      }
     } else {
-      setSuccess('Password updated! Logging you in...');
-      setTimeout(() => {
-        navigate('/user');
-      }, 1500);
+      setLoading(false);
+      setSuccess('Password updated! Please log in with your new password.');
+      setTimeout(() => navigate('/login'), 2000);
     }
   };
 
@@ -113,6 +134,7 @@ const ResetPassword: React.FC = () => {
           <div>access_token: {accessToken ? '[present]' : '[missing]'}</div>
           <div>type: {type}</div>
           <div>hash: {window.location.hash}</div>
+          <div>email: {email}</div>
         </div>
       </div>
     </div>

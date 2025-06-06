@@ -8,6 +8,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import SearchExport from './pages/SearchExport';
 import ScreenRecorder from './pages/ScreenRecorder';
 import TechPage from './pages/Tech';
+import ResetPassword from './pages/ResetPassword';
 
 const ProtectedRoute: React.FC<{ role: 'user' | 'admin'; children: React.ReactNode }> = ({ role, children }) => {
   const { user, role: userRole } = useAuth();
@@ -54,6 +55,7 @@ const AppRoutes = () => (
     <Route path="/search-export" element={<SearchExport />} />
     <Route path="/recorder" element={<ScreenRecorder />} />
     <Route path="/Tech" element={<TechPage />} />
+    <Route path="/reset-password" element={<ResetPassword />} />
     <Route path="*" element={<Navigate to="/login" replace />} />
   </Routes>
 );

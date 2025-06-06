@@ -164,10 +164,10 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
     setStoppedRecordingUrl(null);
     // ...existing code for screen/mic capture and recording...
     try {
-      // 1. Get screen stream (video, maybe system audio)
+      // 1. Get screen stream (video, always with audio)
       let screenStream;
       try {
-        screenStream = await (navigator.mediaDevices as any).getDisplayMedia({ video: true, audio: selectedOutput === 'system' });
+        screenStream = await (navigator.mediaDevices as any).getDisplayMedia({ video: true, audio: true });
       } catch (err) {
         setRecordingError('Screen capture was denied or failed. Please try again and allow screen sharing.');
         setRecording(false);

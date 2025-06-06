@@ -9,6 +9,7 @@ const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -43,7 +44,7 @@ const Login: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', width: '100vw' }}>
-      <div style={{ maxWidth: 300, margin: '2rem 0', textAlign: 'left' }}>
+      <div style={{ maxWidth: 420, margin: '2rem 0', textAlign: 'left', background: '#f7faff', borderRadius: 10, padding: 24, boxShadow: '0 2px 8px #1976d211' }}>
         <h2>Sparky Screen Recorder</h2>
         <form onSubmit={handleSubmit}>
           {/* Show email in the UI, do not show UUID here */}
@@ -115,16 +116,26 @@ const Login: React.FC = () => {
         <button
           type="button"
           style={{ background: 'none', color: '#1976d2', border: 'none', textDecoration: 'underline', cursor: 'pointer', fontSize: 15, marginTop: 4 }}
-          onClick={() => {
-            if (email) {
-              window.location.href = `mailto:${email}?subject=Password%20Reset%20Request&body=Hi%2C%20please%20help%20me%20reset%20my%20password.`;
+          onClick={async () => {
+            setResetMessage(null);
+            setError(null);
+            if (!email) {
+              setError('Please enter your email address above first.');
+              return;
+            }
+            const { error } = await supabase.auth.resetPasswordForEmail(email, {
+              redirectTo: 'http://localhost:5175/reset-password'
+            });
+            if (error) {
+              setError(error.message || 'Failed to send reset link.');
             } else {
-              alert('Please enter your email address above first.');
+              setResetMessage('Password reset link sent! Check your email.');
             }
           }}
         >
           Forgot password?
         </button>
+        {resetMessage && <div style={{ color: 'green', marginTop: 8 }}>{resetMessage}</div>}
       </div>
     </div>
   );

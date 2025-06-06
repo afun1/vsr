@@ -6,5 +6,6 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5175,
+    strictPort: true, // This will make Vite fail if 5175 is not available
   },
 })

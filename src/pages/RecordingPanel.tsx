@@ -114,12 +114,25 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
     return () => { active = false; };
   }, [searchDebounced, memberMode]);
 
-  // Fetch input/output devices on mount
+  // Fetch input/output devices on mount and after permissions
   useEffect(() => {
-    navigator.mediaDevices.enumerateDevices().then(devices => {
-      setInputs(devices.filter(d => d.kind === 'audioinput'));
-      setOutputs(devices.filter(d => d.kind === 'audiooutput'));
-    });
+    // Request a dummy audio stream to force device label population
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then(stream => {
+        stream.getTracks().forEach(track => track.stop());
+        return navigator.mediaDevices.enumerateDevices();
+      })
+      .then(devices => {
+        setInputs(devices.filter(d => d.kind === 'audioinput'));
+        setOutputs(devices.filter(d => d.kind === 'audiooutput'));
+      })
+      .catch(() => {
+        // Fallback: enumerate devices without permission
+        navigator.mediaDevices.enumerateDevices().then(devices => {
+          setInputs(devices.filter(d => d.kind === 'audioinput'));
+          setOutputs(devices.filter(d => d.kind === 'audiooutput'));
+        });
+      });
   }, []);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -468,16 +481,20 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
           onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedOutput(e.target.value)}
           style={{ marginLeft: 10, width: 260 }}
         >
-          {/* Bluetooth option always at the top if available */}
-          {outputs.some(d => d.label.toLowerCase().includes('bluetooth')) && (
-            <option value="bluetooth">Bluetooth Audio</option>
-          )}
           <option value="">Default</option>
           <option value="system">System Audio (if supported)</option>
+          {/* List all available output devices */}
           {outputs.map((d: MediaDeviceInfo) => (
-            <option key={d.deviceId} value={d.deviceId}>{d.label || `Speaker ${d.deviceId}`}</option>
+            <option key={d.deviceId} value={d.deviceId}>
+              {d.label || `Speaker ${d.deviceId}`}
+              {d.label && d.label.toLowerCase().includes('bluetooth') ? ' (Bluetooth)' : ''}
+            </option>
           ))}
         </select>
+        {/* Debug: List all output device labels */}
+        <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>
+          <b>Detected outputs:</b> {outputs.length === 0 ? 'None' : outputs.map(d => d.label || d.deviceId).join(', ')}
+        </div>
       </div>
       {/* Audio controls UI (simplified) */}
       <div style={{ marginTop: 16 }}>

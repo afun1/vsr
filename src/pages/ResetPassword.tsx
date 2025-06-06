@@ -25,6 +25,16 @@ const ResetPassword: React.FC = () => {
   const [hashChecked, setHashChecked] = useState(false);
   const navigate = useNavigate();
 
+  // Debug: log location info on first render
+  useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log('[ResetPassword] href:', window.location.href);
+    // eslint-disable-next-line no-console
+    console.log('[ResetPassword] hash:', window.location.hash);
+    // eslint-disable-next-line no-console
+    console.log('[ResetPassword] search:', window.location.search);
+  }, []);
+
   // Reactively parse hash and search params
   useEffect(() => {
     function updateFromLocation() {
@@ -156,6 +166,8 @@ const ResetPassword: React.FC = () => {
           <div>access_token: {accessToken ? '[present]' : '[missing]'}</div>
           <div>type: {type}</div>
           <div>hash: {window.location.hash}</div>
+          <div>search: {window.location.search}</div>
+          <div>href: {window.location.href}</div>
           <div>email: {email}</div>
           <div>sessionChecked: {String(sessionChecked)}</div>
           <div>hashChecked: {String(hashChecked)}</div>

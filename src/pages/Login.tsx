@@ -42,6 +42,23 @@ const Login: React.FC = () => {
     }
   };
 
+  // --- Password Reset Handler ---
+  const handlePasswordReset = async (email: string) => {
+    setResetMessage(null);
+    setError(null);
+    if (!email) {
+      setError('Please enter your email address above first.');
+      return;
+    }
+    const redirectTo = 'https://sr-nine-red.vercel.app/reset-password';
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+    if (error) {
+      setError(error.message || 'Failed to send reset link.');
+    } else {
+      setResetMessage('Password reset link sent! Check your email.');
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', width: '100vw' }}>
       <div style={{ maxWidth: 420, margin: '2rem 0', textAlign: 'left', background: '#f7faff', borderRadius: 10, padding: 24, boxShadow: '0 2px 8px #1976d211' }}>
@@ -116,22 +133,7 @@ const Login: React.FC = () => {
         <button
           type="button"
           style={{ background: 'none', color: '#1976d2', border: 'none', textDecoration: 'underline', cursor: 'pointer', fontSize: 15, marginTop: 4 }}
-          onClick={async () => {
-            setResetMessage(null);
-            setError(null);
-            if (!email) {
-              setError('Please enter your email address above first.');
-              return;
-            }
-            const { error } = await supabase.auth.resetPasswordForEmail(email, {
-              redirectTo: 'http://localhost:5175/reset-password'
-            });
-            if (error) {
-              setError(error.message || 'Failed to send reset link.');
-            } else {
-              setResetMessage('Password reset link sent! Check your email.');
-            }
-          }}
+          onClick={() => handlePasswordReset(email)}
         >
           Forgot password?
         </button>

@@ -20,7 +20,8 @@ def download_file(url, filename):
         f.write(r.content)
 
 def update_transcript(recording_id, transcript):
-    supabase.table("recordings").update({"transcript": transcript}).eq("id", recording_id).execute()
+    response = supabase.table("recordings").update({"transcript": transcript}).eq("id", recording_id).execute()
+    print(f"Supabase update response for recording {recording_id}:", response)
 
 def main():
     recordings = get_pending_recordings()

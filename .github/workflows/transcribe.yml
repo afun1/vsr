@@ -1,0 +1,28 @@
+name: Transcribe Recordings
+
+on:
+  workflow_dispatch:    # Allows manual trigger
+  schedule:
+    - cron: '*/30 * * * *'  # Runs every 30 minutes
+
+jobs:
+  transcribe:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install openai-whisper supabase requests
+
+      - name: Run transcription script
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python transcribe_and_update.py

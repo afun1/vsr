@@ -25,7 +25,7 @@ def update_transcript(recording_id, transcript):
 def main():
     recordings = get_pending_recordings()
     for rec in recordings:
-        audio_url = rec["url"]  # Adjust if your audio file URL is in a different field
+        audio_url = rec["video_url"]  # Use the correct field from your Supabase table
         recording_id = rec["id"]
         local_file = f"audio_{recording_id}.webm"
         print(f"Downloading {audio_url}...")

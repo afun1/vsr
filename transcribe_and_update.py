@@ -25,6 +25,7 @@ def update_transcript(recording_id, transcript):
 
 def main():
     recordings = get_pending_recordings()
+    print(f"Found {len(recordings)} pending recordings")
     for rec in recordings:
         audio_url = rec["video_url"]  # Use the correct field from your Supabase table
         recording_id = rec["id"]

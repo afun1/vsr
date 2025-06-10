@@ -1,6 +1,3 @@
-// --- AdminDashboard.tsx (May 28, 2025) ---
-// Enhanced admin dashboard: user/member management, bulk actions, pagination, audit log filtering, UI/UX changes
-// See project log for details. All code below first 'audit logs' section was deleted per user request.
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -17,21 +14,18 @@ const AdminDashboard: React.FC = () => {
   const [recordingSearch, setRecordingSearch] = useState('');
   const [analytics, setAnalytics] = useState<{ userCount: number; adminCount: number; recordingCount: number }>({ userCount: 0, adminCount: 0, recordingCount: 0 });
 
-  // --- Account Lookup State ---
   const [lookupInput, setLookupInput] = useState('');
   const [lookupUser, setLookupUser] = useState<any>(null);
-  const [lookupUserChoices, setLookupUserChoices] = useState<any[]>([]); // For multiple matches or suggestions
+  const [lookupUserChoices, setLookupUserChoices] = useState<any[]>([]);
   const [lookupRecordings, setLookupRecordings] = useState<any[]>([]);
   const [lookupLogs, setLookupLogs] = useState<any[]>([]);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [lookupLoading, setLookupLoading] = useState(false);
 
-  // Add user deactivation/activation and inline editing state
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editDisplayName, setEditDisplayName] = useState('');
   const [editEmail, setEditEmail] = useState('');
 
-  // Pagination state for users and recordings
   const [userPage, setUserPage] = useState(1);
   const [recordingPage, setRecordingPage] = useState(1);
   const [memberPage, setMemberPage] = useState(1);
@@ -39,17 +33,19 @@ const AdminDashboard: React.FC = () => {
   const RECORDINGS_PER_PAGE = 10;
   const MEMBERS_PER_PAGE = 10;
 
-  // Bulk selection state
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [selectedRecordingIds, setSelectedRecordingIds] = useState<string[]>([]);
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
 
-  // Audit log search/filter
   const [auditLogSearch, setAuditLogSearch] = useState('');
 
-  // --- Member Management State ---
   const [members, setMembers] = useState<any[]>([]);
   const [memberSearch, setMemberSearch] = useState('');
+  const [copiedUrlId, setCopiedUrlId] = useState<string | null>(null);
+
+  const [showTranscriptModal, setShowTranscriptModal] = useState(false);
+  const [modalTranscript, setModalTranscript] = useState('');
+  const [modalTitle, setModalTitle] = useState('');
 
   useEffect(() => {
     if (role === 'admin') {
@@ -63,7 +59,6 @@ const AdminDashboard: React.FC = () => {
     }
   }, [role]);
 
-  // Fetch all users and their roles (admin only)
   useEffect(() => {
     if (role === 'admin') {
       const fetchUsers = async () => {
@@ -79,37 +74,16 @@ const AdminDashboard: React.FC = () => {
     }
   }, [role]);
 
-  // Fetch all recordings (admin only)
   useEffect(() => {
-    console.log('[AdminDashboard] role:', role, 'user:', user);
-    if (!role) {
-      console.log('[AdminDashboard] Waiting for role to be set before fetching recordings.');
-      return;
+    if (role === 'admin') {
+      const fetchRecordings = async () => {
+        const { data, error } = await supabase.from('recordings').select(`id, video_url, transcript, created_at, client_id, user_id, clients:client_id (name, first_name, last_name), profiles:user_id (display_name)`).order('created_at', { ascending: false });
+        if (!error && data) setRecordings(data);
+      };
+      fetchRecordings();
     }
-    const fetchRecordings = async () => {
-      console.log('[AdminDashboard] Fetching recordings. Role:', role, 'User:', user);
-      let query = supabase
-        .from('recordings')
-        .select('id, video_url, transcript, created_at, client_id, user_id, clients:client_id (name, first_name, last_name), profiles:user_id (display_name)')
-        .order('created_at', { ascending: false });
+  }, [role]);
 
-      if (role !== 'admin') {
-        // Only fetch recordings for the current user
-        const { data: userData } = await supabase.auth.getUser();
-        const userId = userData?.user?.id;
-        if (!userId) return setRecordings([]);
-        query = query.eq('user_id', userId);
-      }
-
-      const { data, error } = await query;
-      console.log('[AdminDashboard] Recordings fetched:', data, 'Error:', error);
-      if (!error && data) setRecordings(data);
-      else console.log('[AdminDashboard] Error fetching recordings:', error);
-    };
-    fetchRecordings();
-  }, [role, user]);
-
-  // Fetch analytics (counts)
   useEffect(() => {
     if (role === 'admin') {
       const fetchAnalytics = async () => {
@@ -125,13 +99,17 @@ const AdminDashboard: React.FC = () => {
     }
   }, [role]);
 
-  // Handle role change
   const handleRoleChange = async (userId: string, newRole: string) => {
     await supabase.from('profiles').update({ role: newRole }).eq('id', userId);
     setUsers(users => users.map(u => u.id === userId ? { ...u, role: newRole } : u));
   };
 
-  // Export users/recordings as CSV
+  const handleDeleteRecording = async (recId: string) => {
+    if (!window.confirm('Delete this recording? This cannot be undone.')) return;
+    await supabase.from('recordings').delete().eq('id', recId);
+    setRecordings(recs => recs.filter(r => r.id !== recId));
+  };
+
   const exportCSV = (rows: any[], columns: string[], filename: string) => {
     const csv = [columns.join(',')].concat(rows.map(r => columns.map(c => JSON.stringify(r[c] ?? '')).join(','))).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -143,7 +121,6 @@ const AdminDashboard: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  // --- Live suggestions as admin types ---
   useEffect(() => {
     if (!lookupInput.trim()) {
       setLookupUserChoices([]);
@@ -157,7 +134,6 @@ const AdminDashboard: React.FC = () => {
         setLookupError(null);
         return;
       }
-      // Use ilike for case-insensitive partial match
       const { data: matches, error } = await supabase
         .from('profiles')
         .select('id, email, display_name, role, created_at')
@@ -172,84 +148,20 @@ const AdminDashboard: React.FC = () => {
     return () => clearTimeout(timeout);
   }, [lookupInput]);
 
-  // --- Account Lookup Handler (on submit) ---
-  /*
-  const handleAccountLookup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLookupError(null);
-    setLookupUser(null);
-    setLookupRecordings([]);
-    setLookupLogs([]);
-    setLookupLoading(true);
-    const input = lookupInput.trim(); // DO NOT ESCAPE
-    const orString = [
-      `email.ilike.*${input}*`,
-      `display_name.ilike.*${input}*`
-    ].join(',');
-    const { data: matches, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .or(orString);
-    if (error) {
-      setLookupError('Error searching users: ' + (error.message || error));
-      setLookupLoading(false);
-      return;
-    }
-    if (!matches || matches.length === 0) {
-      setLookupError('User not found.');
-      setLookupLoading(false);
-      return;
-    }
-    if (matches.length === 1) {
-      // Single match: show details
-      const userProfile = matches[0];
-      setLookupUser(userProfile);
-      // Fetch recordings
-      const { data: recs } = await supabase.from('recordings')
-        .select('*')
-        .eq('user_id', userProfile.id)
-        .order('created_at', { ascending: false });
-      setLookupRecordings(recs || []);
-      // Fetch audit logs
-      const { data: logs } = await supabase.from('audit_logs')
-        .select('*')
-        .eq('user_id', userProfile.id)
-        .order('created_at', { ascending: false });
-      setLookupLogs(logs || []);
-      setLookupLoading(false);
-      return;
-    }
-    // Multiple matches: let admin pick
-    setLookupUserChoices(matches);
-    setLookupLoading(false);
-  };
-  */
-
-  // Helper for admin to select a user from suggestions or multiple matches
   const handleSelectLookupUser = async (userProfile: any) => {
     setLookupUser(userProfile);
     setLookupUserChoices([]);
     setLookupLoading(true);
-    // Fetch recordings
-    const { data: recs } = await supabase.from('recordings')
-      .select('*')
-      .eq('user_id', userProfile.id)
-      .order('created_at', { ascending: false });
+    const { data: recs } = await supabase.from('recordings').select('*').eq('user_id', userProfile.id).order('created_at', { ascending: false });
     setLookupRecordings(recs || []);
-    // Fetch audit logs
-    const { data: logs } = await supabase.from('audit_logs')
-      .select('*')
-      .eq('user_id', userProfile.id)
-      .order('created_at', { ascending: false });
+    const { data: logs } = await supabase.from('audit_logs').select('*').eq('user_id', userProfile.id).order('created_at', { ascending: false });
     setLookupLogs(logs || []);
     setLookupLoading(false);
   };
 
-  // Filtered users/recordings
   const filteredUsers = users.filter(u => {
     if (!userSearch) return true;
     const search = userSearch.trim().toLowerCase();
-    // Match by email, display name, role, or id for ALL users
     return (
       String(u.email || '').toLowerCase().includes(search) ||
       String(u.display_name || '').toLowerCase().includes(search) ||
@@ -257,7 +169,6 @@ const AdminDashboard: React.FC = () => {
       String(u.id || '').toLowerCase().includes(search)
     );
   });
-  // DEBUG: Log users and search
   if (userSearch && users.length > 0) {
     console.log('User search:', userSearch, 'Users:', users);
     if (users[0]) {
@@ -267,18 +178,14 @@ const AdminDashboard: React.FC = () => {
   const filteredRecordings = recordings.filter(r => {
     if (!recordingSearch) return true;
     const search = recordingSearch.toLowerCase();
-    // Recorder display name
     const recorderName = (r.profiles && r.profiles.display_name) ? r.profiles.display_name.toLowerCase() : '';
-    // Client name fields
     const clientObj = r.clients || {};
     const clientName = (clientObj.name || '').toLowerCase();
     const clientFirst = (clientObj.first_name || '').toLowerCase();
     const clientLast = (clientObj.last_name || '').toLowerCase();
-    // Other fields
     const videoUrl = (r.video_url || '').toLowerCase();
     const transcript = (r.transcript || '').toLowerCase();
     const idStr = r.id ? r.id.toString() : '';
-    // Match any fragment
     return (
       videoUrl.includes(search) ||
       transcript.includes(search) ||
@@ -289,10 +196,8 @@ const AdminDashboard: React.FC = () => {
       clientLast.includes(search)
     );
   });
-  // Filter out any clients whose email matches a user/admin in the profiles table
   const [profileEmails, setProfileEmails] = useState<string[]>([]);
   useEffect(() => {
-    // Fetch all emails from profiles (users/admins)
     supabase.from('profiles').select('email').then(({ data }) => {
       if (data) setProfileEmails(data.map((p: any) => p.email));
     });
@@ -302,46 +207,37 @@ const AdminDashboard: React.FC = () => {
     !profileEmails.includes(m.email)
   );
 
-  // Add user active/inactive toggle (assume 'active' boolean column exists or fallback to notifications_enabled)
   const handleUserActive = async (userId: string, active: boolean) => {
     await supabase.from('profiles').update({ notifications_enabled: active }).eq('id', userId);
     setUsers(users => users.map(u => u.id === userId ? { ...u, notifications_enabled: active } : u));
   };
 
-  // Inline save for display name/email
   const handleSaveUserEdit = async (userId: string) => {
     const updateFields: any = { email: editEmail };
     const userObj = users.find(u => u.id === userId);
-    // For admin, refuse to save if display_name is blank
     if (userObj && userObj.role === 'admin' && (!editDisplayName || editDisplayName.trim() === '')) {
       alert('Admin display name cannot be blank.');
       return;
     }
-    // For all users, only update display_name if non-empty
     if (editDisplayName && editDisplayName.trim() !== '') {
       updateFields.display_name = editDisplayName;
     }
-    // Never update display_name to blank/null for any user
     await supabase.from('profiles').update(updateFields).eq('id', userId);
     setUsers(users => users.map(u => u.id === userId ? { ...u, ...updateFields } : u));
     setEditingUserId(null);
   };
 
-  // --- Member Management Effects and Handlers ---
   useEffect(() => {
-    // Fetch members from clients table (not profiles)
     supabase.from('clients').select('id, email, name, first_name, last_name, created_at').then(({ data }) => {
       if (data) setMembers(data);
     });
   }, []);
 
-  // --- Bulk Actions for Users ---
   const handleBulkDeleteUsers = async () => {
     if (selectedUserIds.length === 0) {
       alert('No users selected for deletion.');
       return;
     }
-    // Prevent deleting all users in the system
     if (selectedUserIds.length === users.length) {
       alert('Bulk delete of ALL users is not allowed. Please deselect at least one user.');
       return;
@@ -351,14 +247,17 @@ const AdminDashboard: React.FC = () => {
     setUsers(users => users.filter(u => !selectedUserIds.includes(u.id)));
     setSelectedUserIds([]);
   };
-  // --- Bulk Actions for Recordings ---
+  const handleBulkPromoteUsers = async () => {
+    await supabase.from('profiles').update({ role: 'admin' }).in('id', selectedUserIds);
+    setUsers(users => users.map(u => selectedUserIds.includes(u.id) ? { ...u, role: 'admin' } : u));
+    setSelectedUserIds([]);
+  };
   const handleBulkDeleteRecordings = async () => {
     if (!window.confirm('Delete selected recordings? This cannot be undone.')) return;
     await supabase.from('recordings').delete().in('id', selectedRecordingIds);
     setRecordings(recs => recs.filter(r => !selectedRecordingIds.includes(r.id)));
     setSelectedRecordingIds([]);
   };
-  // --- Export Members CSV ---
   const exportMembersCSV = (rows: any[], columns: string[], filename: string) => {
     const csv = [columns.join(',')].concat(rows.map(r => columns.map(c => JSON.stringify(r[c] ?? '')).join(','))).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -370,39 +269,11 @@ const AdminDashboard: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  // --- PAGINATION HELPERS ---
-  // Users
   const userPageCount = Math.max(1, Math.ceil(filteredUsers.length / USERS_PER_PAGE));
-  // const pagedUsers = filteredUsers.slice((userPage-1)*USERS_PER_PAGE, userPage*USERS_PER_PAGE);
-  // Recordings
   const recordingPageCount = Math.max(1, Math.ceil(filteredRecordings.length / RECORDINGS_PER_PAGE));
   const pagedRecordings = filteredRecordings.slice((recordingPage-1)*RECORDINGS_PER_PAGE, recordingPage*RECORDINGS_PER_PAGE);
-  // Members
   const memberPageCount = Math.max(1, Math.ceil(filteredMembers.length / MEMBERS_PER_PAGE));
   const pagedMembers = filteredMembers.slice((memberPage-1)*MEMBERS_PER_PAGE, memberPage*MEMBERS_PER_PAGE);
-
-  const [copiedUrlId, setCopiedUrlId] = useState<string | null>(null);
-
-  // Fetch comments for recordings on page change
-  useEffect(() => {
-    if (!pagedRecordings || pagedRecordings.length === 0) return;
-    const fetchComments = async () => {
-      const ids = pagedRecordings.map(r => r.id);
-      const { data, error } = await supabase
-        .from('comments')
-        .select('id, recording_id, user_id, content, created_at, user_display_name')
-        .in('recording_id', ids);
-      if (!error && data) {
-        const grouped: Record<string, any[]> = {};
-        data.forEach((c: any) => {
-          if (!grouped[c.recording_id]) grouped[c.recording_id] = [];
-          grouped[c.recording_id].push(c);
-        });
-        // Remove: setCommentsByRecording(grouped);
-      }
-    };
-    fetchComments();
-  }, [pagedRecordings]);
 
   return (
     <>
@@ -437,7 +308,6 @@ const AdminDashboard: React.FC = () => {
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, marginBottom: 24 }}>
           <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 24 }}>
-            {/* Removed user search field, user lookup button, member search field, and member lookup button from above user management box */}
           </div>
         </div>
         {lookupLoading && (
@@ -516,13 +386,10 @@ const AdminDashboard: React.FC = () => {
             ))}
           </div>
         )}
-        {/* END lookupUserChoices dropdown */}
         <div style={{ display: 'flex', gap: 32, marginBottom: 24 }}>
-          {/* Removed Make a Recording box */}
         </div>
         <hr />
         <h3>User Management</h3>
-        {/* User Management Table with Pagination, Bulk Actions */}
         <div style={{ marginBottom: 8, width: '100%' }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%' }}>
             <input
@@ -535,9 +402,9 @@ const AdminDashboard: React.FC = () => {
             />
             <button type="submit" style={{ background: 'rgb(25, 118, 210)', color: 'rgb(255, 255, 255)', border: 'none', borderRadius: 4, padding: '7px 18px', fontWeight: 600 }}>User Lookup</button>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flex: 1 }}>
-              <button onClick={handleBulkDeleteUsers} disabled={selectedUserIds.length < 2} style={{ background: '#e53935', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600, opacity: selectedUserIds.length < 2 ? 0.5 : 1, cursor: selectedUserIds.length < 2 ? 'not-allowed' : 'pointer' }}>
-                Delete Selected
-              </button>
+              <button onClick={handleBulkPromoteUsers} disabled={selectedUserIds.length === 0} style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>Promote to Admin</button>
+              <button onClick={() => exportCSV(filteredUsers, ['id','email','display_name','role'], 'users.csv')} style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>Export Users CSV</button>
+              <button onClick={handleBulkDeleteUsers} disabled={selectedUserIds.length === 0} style={{ background: '#e53935', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>Delete Selected</button>
             </div>
           </div>
         </div>
@@ -617,7 +484,6 @@ const AdminDashboard: React.FC = () => {
         </div>
         <hr />
         <h3>Member Management</h3>
-        {/* Member Management Table with Pagination, Bulk Actions */}
         <div style={{ marginBottom: 8, width: '100%' }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%' }}>
             <input
@@ -631,19 +497,6 @@ const AdminDashboard: React.FC = () => {
             <button type="submit" style={{ background: 'rgb(25, 118, 210)', color: 'rgb(255, 255, 255)', border: 'none', borderRadius: 4, padding: '7px 18px', fontWeight: 600 }}>Member Lookup</button>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flex: 1 }}>
               <button onClick={() => exportMembersCSV(filteredMembers, ['id','email','name','first_name','last_name','created_at'], 'members.csv')} style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>Export Members CSV</button>
-              <button
-                onClick={async () => {
-                  if (selectedMemberIds.length === 0) return;
-                  if (!window.confirm('Delete all selected members? This cannot be undone.')) return;
-                  await supabase.from('clients').delete().in('id', selectedMemberIds);
-                  setMembers(members => members.filter(m => !selectedMemberIds.includes(m.id)));
-                  setSelectedMemberIds([]);
-                }}
-                disabled={selectedMemberIds.length === 0}
-                style={{ background: '#e53935', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600, opacity: selectedMemberIds.length === 0 ? 0.5 : 1, cursor: selectedMemberIds.length === 0 ? 'not-allowed' : 'pointer' }}
-              >
-                Delete Selected
-              </button>
             </div>
           </div>
         </div>
@@ -654,19 +507,21 @@ const AdminDashboard: React.FC = () => {
               <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Email</th>
               <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Name</th>
               <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Created At</th>
-              {/* Comments column removed */}
             </tr>
           </thead>
           <tbody>
-            {pagedMembers.map(member => (
-              <tr key={member.id}>
-                <td><input type="checkbox" checked={selectedMemberIds.includes(member.id)} onChange={e => setSelectedMemberIds(e.target.checked ? [...selectedMemberIds, member.id] : selectedMemberIds.filter(id => id !== member.id))} /></td>
-                <td>{member.email}</td>
-                <td>{member.name || `${member.first_name || ''} ${member.last_name || ''}`}</td>
-                <td>{member.created_at ? new Date(member.created_at).toLocaleString() : '-'}</td>
-                {/* Comments cell removed */}
-              </tr>
-            ))}
+            {pagedMembers.length === 0 ? (
+              <tr><td colSpan={3} style={{ textAlign: 'center', color: '#888' }}>No members found.</td></tr>
+            ) : (
+              pagedMembers.map(m => (
+                <tr key={m.id}>
+                  <td><input type="checkbox" checked={selectedMemberIds.includes(m.id)} onChange={e => setSelectedMemberIds(e.target.checked ? [...selectedMemberIds, m.id] : selectedMemberIds.filter(id => id !== m.id))} /></td>
+                  <td>{m.email}</td>
+                  <td>{m.name || `${m.first_name || ''} ${m.last_name || ''}`}</td>
+                  <td>{m.created_at ? new Date(m.created_at).toLocaleString() : '-'}</td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
@@ -676,7 +531,6 @@ const AdminDashboard: React.FC = () => {
         </div>
         <hr />
         <h3>Recordings Management</h3>
-        {/* Recordings Management Table with Pagination, Bulk Actions */}
         <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'space-between' }}>
           <input
             type="text"
@@ -689,7 +543,7 @@ const AdminDashboard: React.FC = () => {
             <button onClick={() => exportCSV(filteredRecordings, ['id','video_url','transcript','created_at','client_id','user_id'], 'recordings.csv')} style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>
               Export Recordings CSV
             </button>
-            <button onClick={handleBulkDeleteRecordings} disabled={selectedRecordingIds.length === 0} style={{ background: '#e53935', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600, opacity: selectedRecordingIds.length === 0 ? 0.5 : 1, cursor: selectedRecordingIds.length === 0 ? 'not-allowed' : 'pointer' }}>
+            <button onClick={handleBulkDeleteRecordings} disabled={selectedRecordingIds.length === 0} style={{ background: '#e53935', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>
               Delete Selected
             </button>
           </div>
@@ -701,25 +555,21 @@ const AdminDashboard: React.FC = () => {
               <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Title</th>
               <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Play / URL</th>
               <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Transcript</th>
-              {/* Comments column removed */}
             </tr>
           </thead>
           <tbody>
             {pagedRecordings.map(r => {
-              // Use client name (not client_id)
               const clientObj = r.clients || {};
-              // Prefer first_name + last_name, then name, then '-'
               const clientName = (clientObj.first_name && clientObj.last_name)
                 ? `${clientObj.first_name} ${clientObj.last_name}`
                 : (clientObj.name || '-');
-              // Use display_name from profiles if available, else '-'
-              const displayName = (r.profiles && r.profiles.display_name) ? r.profiles.display_name : '-';
+              const displayName = r.profiles?.display_name || '-';
               const createdAt = r.created_at ? new Date(r.created_at).toLocaleString() : '-';
               return (
                 <tr key={r.id}>
                   <td><input type="checkbox" checked={selectedRecordingIds.includes(r.id)} onChange={e => setSelectedRecordingIds(e.target.checked ? [...selectedRecordingIds, r.id] : selectedRecordingIds.filter(id => id !== r.id))} /></td>
                   <td>
-                    <div style={{ fontWeight: 600 }}>{clientName}</div>
+                    <div>{clientName}</div>
                     <div style={{ color: '#888', fontSize: 13 }}>By: {displayName}</div>
                     <div style={{ color: '#888', fontSize: 13 }}>{createdAt}</div>
                   </td>
@@ -743,13 +593,104 @@ const AdminDashboard: React.FC = () => {
                       <span style={{ color: '#888' }}>No video</span>
                     )}
                   </td>
-                  <td style={{ maxWidth: 320, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{r.transcript || '-'}</td>
-                  {/* Comments cell removed */}
+                  <td style={{ maxWidth: 320, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
+                    {r.transcript
+                      ? (() => {
+                          let truncated = '';
+                          const lines = r.transcript.split('\n').filter(l => l.trim() !== '');
+                          if (lines.length > 1) {
+                            truncated = lines.slice(0, 2).join('\n');
+                          } else {
+                            const words = r.transcript.split(' ');
+                            truncated = words.slice(0, 20).join(' ');
+                            if (words.length > 20) truncated += '...';
+                          }
+                          return (
+                            <>
+                              {truncated}
+                              <br />
+                              <a
+                                href="#"
+                                style={{ color: '#1976d2', marginRight: 12 }}
+                                onClick={e => {
+                                  e.preventDefault();
+                                  setModalTranscript(r.transcript);
+                                  setModalTitle(clientName);
+                                  setShowTranscriptModal(true);
+                                }}
+                              >
+                                Read More
+                              </a>
+                              <a
+                                href="#"
+                                style={{ color: '#1976d2' }}
+                                onClick={e => {
+                                  e.preventDefault();
+                                  const blob = new Blob([r.transcript], { type: 'text/plain' });
+                                  const url = URL.createObjectURL(blob);
+                                  const a = document.createElement('a');
+                                  a.href = url;
+                                  a.download = `transcript-${r.id}.txt`;
+                                  a.click();
+                                  URL.revokeObjectURL(url);
+                                }}
+                              >
+                                Download Text
+                              </a>
+                            </>
+                          );
+                        })()
+                      : '-'}
+                  </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
+        {showTranscriptModal && (
+          <div style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.35)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <div style={{
+              background: '#fff',
+              borderRadius: 8,
+              maxWidth: 600,
+              width: '90%',
+              maxHeight: '80vh',
+              overflowY: 'auto',
+              boxShadow: '0 4px 32px #0003',
+              padding: 32,
+              position: 'relative'
+            }}>
+              <button
+                onClick={() => setShowTranscriptModal(false)}
+                style={{
+                  position: 'absolute',
+                  top: 16,
+                  right: 16,
+                  background: '#1976d2',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 4,
+                  padding: '6px 16px',
+                  fontWeight: 600,
+                  fontSize: 15,
+                  cursor: 'pointer'
+                }}
+              >
+                Close
+              </button>
+              <h3 style={{ marginTop: 0, marginBottom: 18 }}>{modalTitle} Transcript</h3>
+              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 15, color: '#222', margin: 0 }}>{modalTranscript}</pre>
+            </div>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           <button disabled={recordingPage === 1} onClick={() => setRecordingPage(p => Math.max(1, p-1))}>Prev</button>
           <span>Page {recordingPage} of {recordingPageCount}</span>
@@ -757,7 +698,6 @@ const AdminDashboard: React.FC = () => {
         </div>
         <hr />
         <h3>Audit Logs</h3>
-        {/* Audit Log Search/Filter */}
         <div style={{ marginBottom: 10 }}>
           <input
             type="text"
@@ -767,7 +707,6 @@ const AdminDashboard: React.FC = () => {
             style={{ fontSize: 15, padding: '4px 10px', width: 320 }}
           />
         </div>
-        {/* Audit Log Filtering and Rendering */}
         <ul style={{ marginTop: 24, padding: 0, listStyle: 'none' }}>
           {auditLogs
             .filter((log) => {

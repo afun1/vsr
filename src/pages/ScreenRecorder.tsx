@@ -17,6 +17,22 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
   const [recording, setRecording] = useState(false);
   const [search, setSearch] = useState('');
 
+  // --- Manual Transcribe Handler ---
+  const handleManualTranscribe = async (recordingId: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('trigger_github_transcribe', {
+        body: { recording_id: recordingId }
+      });
+      if (error) {
+        alert('Failed to trigger transcription: ' + error.message);
+      } else {
+        alert('Transcription triggered successfully!');
+      }
+    } catch (err: any) {
+      alert('Failed to trigger transcription: ' + (err.message || err));
+    }
+  };
+
   useEffect(() => {
     if (!user) { setRecordings([]); setLoading(false); return; }
     const fetchRecordings = async () => {
@@ -284,6 +300,31 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
                       style={{ width: 40, height: 40, borderRadius: '50%', background: '#ff9800', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px #ff980022', color: '#fff', fontWeight: 700, fontSize: 16, cursor: 'pointer' }}
                     >
                       URL
+                    </button>
+                    {/* Manual Transcribe Button */}
+                    <button
+                      title="Manual Transcribe"
+                      onClick={async e => {
+                        e.stopPropagation();
+                        await handleManualTranscribe(rec.id);
+                      }}
+                      style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: '50%',
+                        background: '#9c27b0',
+                        border: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 2px 8px #9c27b022',
+                        color: '#fff',
+                        fontWeight: 700,
+                        fontSize: 16,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <span role="img" aria-label="Transcribe">📝</span>
                     </button>
                   </div>
                 </div>

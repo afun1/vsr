@@ -2,14 +2,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../auth/supabaseClient';
 
-// Fix: add type for RecordingPanelProps
 interface RecordingPanelProps {
   setRecordedVideoUrl: (url: string | null) => void;
   onStartLiveScreen: (stream: MediaStream) => void;
 }
 
 const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, onStartLiveScreen }: RecordingPanelProps) => {
-  // --- State (copied from ScreenRecorder) ---
   const [micGain, setMicGain] = useState(() => {
     const stored = localStorage.getItem('micGain');
     return stored ? Number(stored) : 1;
@@ -25,7 +23,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
   const [searchDebounced, setSearchDebounced] = useState('');
-  // New member form state
   const [newFirstName, setNewFirstName] = useState('');
   const [newLastName, setNewLastName] = useState('');
   const [newEmail, setNewEmail] = useState('');
@@ -33,30 +30,20 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
   const [newPhone, setNewPhone] = useState('');
   const [newMemberLoading, setNewMemberLoading] = useState(false);
   const [newMemberError, setNewMemberError] = useState<string | null>(null);
-  // Add state for audio devices
   const [inputs, setInputs] = useState<MediaDeviceInfo[]>([]);
   const [outputs, setOutputs] = useState<MediaDeviceInfo[]>([]);
-  const [selectedMic, setSelectedMic] = useState('');
-  const [selectedOutput, setSelectedOutput] = useState('');
+  const [selectedMic, setSelectedMic] = useState(() => localStorage.getItem('selectedMic') || '');
+  const [selectedOutput, setSelectedOutput] = useState(() => localStorage.getItem('selectedOutput') || '');
   const [recording, setRecording] = useState(false);
   const [liveStream, setLiveStream] = useState<MediaStream | null>(null);
   const liveVideoRef = useRef<HTMLVideoElement | null>(null);
   const [recordingError, setRecordingError] = useState<string | null>(null);
-  // State for stopped recording
   const [stoppedRecordingBlob, setStoppedRecordingBlob] = useState<Blob | null>(null);
   const [stoppedRecordingUrl, setStoppedRecordingUrl] = useState<string | null>(null);
-  // Add state for pause/resume
   const [isPaused, setIsPaused] = useState(false);
 
-  // When switching memberMode, reset search and suggestions state
   useEffect(() => {
-    if (memberMode === 'existing') {
-      setSearch('');
-      setClientSuggestions([]);
-      setSuggestionsLoading(false);
-      setSuggestionsError(null);
-      setClientId(null);
-    } else if (memberMode === 'new') {
+    if (memberMode === 'new') {
       setNewFirstName('');
       setNewLastName('');
       setNewEmail('');
@@ -66,7 +53,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
     }
   }, [memberMode]);
 
-  // Debounce search input for better performance
   useEffect(() => {
     if (memberMode !== 'existing') return;
     const handler = setTimeout(() => {
@@ -75,7 +61,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
     return () => clearTimeout(handler);
   }, [search, memberMode]);
 
-  // Unified live search effect for existing member (debounced, only when 1+ chars)
   useEffect(() => {
     if (memberMode !== 'existing') return;
     let active = true;
@@ -114,9 +99,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
     return () => { active = false; };
   }, [searchDebounced, memberMode]);
 
-  // Fetch input/output devices on mount and after permissions
   useEffect(() => {
-    // Request a dummy audio stream to force device label population
     navigator.mediaDevices.getUserMedia({ audio: true })
       .then(stream => {
         stream.getTracks().forEach(track => track.stop());
@@ -127,7 +110,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         setOutputs(devices.filter(d => d.kind === 'audiooutput'));
       })
       .catch(() => {
-        // Fallback: enumerate devices without permission
         navigator.mediaDevices.enumerateDevices().then(devices => {
           setInputs(devices.filter(d => d.kind === 'audioinput'));
           setOutputs(devices.filter(d => d.kind === 'audiooutput'));
@@ -142,7 +124,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
     if (liveVideoRef.current && liveStream) {
       liveVideoRef.current.srcObject = liveStream;
       liveVideoRef.current.play().catch(() => {});
-      // Set sinkId for output device if supported
       if (typeof liveVideoRef.current.setSinkId === 'function') {
         let outputId = selectedOutput;
         if (selectedOutput === 'bluetooth') {
@@ -162,9 +143,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
   const handleStartRecording = async () => {
     setRecordingError(null);
     setStoppedRecordingUrl(null);
-    // ...existing code for screen/mic capture and recording...
     try {
-      // 1. Get screen stream (video, always with audio)
       let screenStream;
       try {
         screenStream = await (navigator.mediaDevices as any).getDisplayMedia({ video: true, audio: true });
@@ -175,16 +154,13 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         return;
       }
       if (onStartLiveScreen) onStartLiveScreen(screenStream);
-      setLiveStream(screenStream); // Show live preview (for legacy fallback)
-      // 2. Get mic stream using selectedMic
+      setLiveStream(screenStream);
       let micStream: MediaStream | null = null;
       if (selectedMic === 'bluetooth') {
-        // Try to get a Bluetooth audio input if available
         const bluetoothDevice = inputs.find(d => d.label.toLowerCase().includes('bluetooth'));
         if (bluetoothDevice) {
           micStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: bluetoothDevice.deviceId } } });
         } else {
-          // Fallback: try default audio
           micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         }
       } else if (selectedMic) {
@@ -192,30 +168,24 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
       } else {
         micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       }
-      // 3. Mix audio (mic + system) if both present
       let finalStream: MediaStream;
       if (screenStream.getAudioTracks().length > 0 && micStream && micStream.getAudioTracks().length > 0) {
         const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
         const dest = audioCtx.createMediaStreamDestination();
-        // System audio
         const sysSource = audioCtx.createMediaStreamSource(new MediaStream([screenStream.getAudioTracks()[0]]));
         sysSource.connect(dest);
-        // Mic audio
         const micSource = audioCtx.createMediaStreamSource(micStream);
         micSource.connect(dest);
-        // Video track
         finalStream = new MediaStream([
           ...screenStream.getVideoTracks(),
           ...dest.stream.getAudioTracks()
         ]);
       } else if (micStream && micStream.getAudioTracks().length > 0) {
-        // Only mic audio
         finalStream = new MediaStream([
           ...screenStream.getVideoTracks(),
           ...micStream.getAudioTracks()
         ]);
       } else {
-        // Only screen audio
         finalStream = screenStream;
       }
       setRecording(true);
@@ -226,19 +196,15 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         if (event.data.size > 0) recordedChunksRef.current.push(event.data);
       };
       mediaRecorder.onstop = async () => {
-        console.log('[RecordingPanel] mediaRecorder.onstop fired');
         const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
         const url = URL.createObjectURL(blob);
-        console.log('[RecordingPanel] stoppedRecordingBlob:', blob, 'stoppedRecordingUrl:', url);
         setStoppedRecordingBlob(blob);
         setStoppedRecordingUrl(url);
         setRecording(false);
         setLiveStream(null);
         setIsPaused(false);
-        // Do NOT upload or insert to DB here!
       };
       mediaRecorder.start();
-      // Stop tracks when recording is stopped
       screenStream.getVideoTracks()[0].onended = () => {
         if (mediaRecorder.state !== 'inactive') mediaRecorder.stop();
         setRecording(false);
@@ -251,7 +217,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
     }
   };
 
-  // Upload handler: called after form is completed
   const handleSaveRecordingDetails = async () => {
     setRecordingError(null);
     let finalClientId = clientId;
@@ -264,7 +229,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         setRecordingError('Please select a member before saving.');
         return;
       }
-      // Verify client exists
       try {
         const { data, error } = await supabase.from('clients').select('id').eq('id', clientId).single();
         if (error || !data) {
@@ -278,7 +242,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         return;
       }
     } else {
-      // New member creation
       if (!newFirstName.trim() || !newLastName.trim() || !newEmail.trim() || !newUsername.trim() || !newPhone.trim()) {
         setNewMemberError('All fields are required.');
         return;
@@ -306,14 +269,12 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         localStorage.setItem('lastMemberId', data.id);
         setNewMemberLoading(false);
         finalClientId = data.id;
-        console.log('[RecordingPanel] Created new client with id:', data.id);
       } catch (err) {
         setNewMemberError('Unexpected error creating member: ' + (err instanceof Error ? err.message : String(err)));
         setNewMemberLoading(false);
         return;
       }
     }
-    // Upload to Supabase Storage and insert DB row
     try {
       const { data: userData } = await supabase.auth.getUser();
       const userId = userData?.user?.id;
@@ -339,63 +300,23 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
       if (dbError) {
         setRecordingError('Failed to insert recording row: ' + dbError.message);
       } else if (insertData && insertData.length > 0) {
-        // Use the actual UUID id from the inserted row
         const newRecording = insertData[0];
         setRecordedVideoUrl(newRecording.video_url);
         window.dispatchEvent(new CustomEvent('sparky-auto-select-recording', { detail: newRecording.video_url }));
-        // Optionally, store the new recording id in state/localStorage if needed for further actions
         setStoppedRecordingBlob(null);
         setStoppedRecordingUrl(null);
-        setClientId(null);
-        setSearch('');
-        setNewFirstName('');
-        setNewLastName('');
-        setNewEmail('');
-        setNewUsername('');
-        setNewPhone('');
       }
     } catch (err) {
       setRecordingError('Unexpected error during upload: ' + (err instanceof Error ? err.message : String(err)));
     }
   };
 
-  // Restore audio settings and member on mount
-  useEffect(() => {
-    const storedMic = localStorage.getItem('selectedMic');
-    if (storedMic) setSelectedMic(storedMic);
-    const storedOutput = localStorage.getItem('selectedOutput');
-    if (storedOutput) setSelectedOutput(storedOutput);
-    const storedMicGain = localStorage.getItem('micGain');
-    if (storedMicGain) setMicGain(Number(storedMicGain));
-    const storedSystemGain = localStorage.getItem('systemGain');
-    if (storedSystemGain) setSystemGain(Number(storedSystemGain));
-    const storedMember = localStorage.getItem('lastMemberId');
-    if (storedMember) {
-      setClientId(storedMember);
-      // Try to fetch and set the search field to the member's name/email
-      (async () => {
-        const { data } = await supabase.from('clients').select('id, name, email, sparky_username').eq('id', storedMember).single();
-        if (data) {
-          setSearch(data.name || data.email || data.sparky_username || '');
-          setClientSuggestions([data]);
-        }
-      })();
-    }
-  }, []);
-
-  // Persist audio settings and member selection
   useEffect(() => { localStorage.setItem('micGain', String(micGain)); }, [micGain]);
   useEffect(() => { localStorage.setItem('systemGain', String(systemGain)); }, [systemGain]);
   useEffect(() => { localStorage.setItem('selectedMic', selectedMic); }, [selectedMic]);
   useEffect(() => { localStorage.setItem('selectedOutput', selectedOutput); }, [selectedOutput]);
   useEffect(() => { if (clientId) { localStorage.setItem('lastMemberId', clientId); } }, [clientId]);
 
-  // Remove any useEffect that sets clientId or clientSuggestions on mount unless the user types.
-  // Only update clientSuggestions based on the current search string.
-  // Only show the dropdown if search.trim().length > 0 and clientSuggestions.length > 0
-  // Do not set clientSuggestions to [data] when loading last member.
-  // Ensure the dropdown always shows all search results for the current search string, not just the last selected member.
-  // --- PiP support ---
   const pipVideoRef = useRef<HTMLVideoElement | null>(null);
   useEffect(() => {
     const pipHandler = () => {
@@ -416,7 +337,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
     }
   }, [liveStream, recording]);
 
-  // Add debug logs to trace recording lifecycle
   useEffect(() => {
     console.log('[RecordingPanel] mounted');
     return () => {
@@ -424,18 +344,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
     };
   }, []);
 
-  // const startRecording = async () => {
-  //   console.log('[RecordingPanel] startRecording called');
-  //   // ...existing code...
-  // };
-
-  // const stopRecording = () => {
-  //   console.log('[RecordingPanel] stopRecording called');
-  //   mediaRecorderRef.current?.stop();
-  //   setRecording(false);
-  // };
-
-  // Add pause/resume handler for recording
   const handlePauseResume = () => {
     if (!mediaRecorderRef.current) return;
     if (mediaRecorderRef.current.state === 'recording') {
@@ -447,17 +355,9 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
     }
   };
 
-  // --- UI ---
   return (
     <div style={{ width: 480, background: '#fff', borderRadius: 10, boxShadow: '0 2px 12px #0001', padding: 24, marginBottom: 32 }}>
       <h3>New Recording</h3>
-      {/* DEBUG OUTPUT */}
-      <div style={{ color: '#888', fontSize: 13, marginBottom: 8 }}>
-        <div>stoppedRecordingUrl: {String(stoppedRecordingUrl)}</div>
-        <div>stoppedRecordingBlob: {stoppedRecordingBlob ? 'yes' : 'no'}</div>
-        <div>recordingError: {recordingError || 'none'}</div>
-      </div>
-      {/* Audio device selection (always at the top) */}
       <div style={{ marginTop: 0, marginBottom: 8 }}>
         <label style={{ fontWeight: 600 }}>Microphone/Input Device:</label>
         <select
@@ -465,7 +365,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
           onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedMic(e.target.value)}
           style={{ marginLeft: 10, width: 260 }}
         >
-          {/* Bluetooth option always at the top */}
           <option value="bluetooth">Bluetooth Audio</option>
           {inputs.map((input, idx) => (
             <option key={input.deviceId || idx} value={input.deviceId}>
@@ -483,7 +382,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         >
           <option value="">Default</option>
           <option value="system">System Audio (if supported)</option>
-          {/* List all available output devices */}
           {outputs.map((d: MediaDeviceInfo) => (
             <option key={d.deviceId} value={d.deviceId}>
               {d.label || `Speaker ${d.deviceId}`}
@@ -491,12 +389,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
             </option>
           ))}
         </select>
-        {/* Debug: List all output device labels */}
-        <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>
-          <b>Detected outputs:</b> {outputs.length === 0 ? 'None' : outputs.map(d => d.label || d.deviceId).join(', ')}
-        </div>
       </div>
-      {/* Audio controls UI (simplified) */}
       <div style={{ marginTop: 16 }}>
         <label style={{ fontWeight: 600 }}>Microphone Gain:</label>
         <input
@@ -523,11 +416,9 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         />
         <span style={{ marginLeft: 8, fontSize: 14 }}>{Math.round(systemGain * 100)}%</span>
       </div>
-      {/* Recording controls and preview */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 32 }}>
         {recording && liveStream ? (
           <>
-            {/* Live preview of the window being recorded, always visible in the workspace */}
             <video ref={liveVideoRef} style={{ width: 400, height: 220, borderRadius: 8, background: '#000', marginBottom: 24 }} autoPlay muted />
             <div style={{ display: 'flex', flexDirection: 'row', gap: 16, marginBottom: 8 }}>
               {!isPaused ? (
@@ -561,11 +452,9 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
             </div>
           </>
         ) : stoppedRecordingUrl ? (
-          // After stop, always show preview and member forms if stoppedRecordingUrl is set
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
             <video src={stoppedRecordingUrl || undefined} controls style={{ width: 400, height: 220, borderRadius: 8, background: '#000', marginBottom: 24 }} />
             <div style={{ width: '100%', maxWidth: 400, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              {/* Member info form, centered below video */}
               <div style={{ display: 'flex', gap: 24, marginBottom: 12, marginTop: 0 }}>
                 <label style={{ fontWeight: 500 }}>
                   <input
@@ -715,7 +604,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
           </>
         )}
       </div>
-      {/* Hidden video for PiP */}
       {recording && liveStream && (
         <video
           ref={pipVideoRef}
@@ -725,7 +613,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
           muted
         />
       )}
-      {/* Error message for recording issues */}
       {recordingError && (
         <div style={{ color: 'red', fontWeight: 600, margin: '12px 0' }}>{recordingError}</div>
       )}

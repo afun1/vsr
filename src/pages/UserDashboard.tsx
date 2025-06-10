@@ -24,7 +24,6 @@ const UserDashboard: React.FC = () => {
     }
   }, [liveStream, recording]);
 
-  // Listen for stop event from header
   useEffect(() => {
     const stopHandler = () => {
       setRecording(false);
@@ -39,24 +38,20 @@ const UserDashboard: React.FC = () => {
     const fetchDisplayName = async () => {
       const { data: userData } = await supabase.auth.getUser();
       const userId = userData?.user?.id;
-      console.log('[UserDashboard] userId:', userId);
       if (!userId) return;
-      const { data, error } = await supabase.from('profiles').select('display_name').eq('id', userId).single();
-      console.log('[UserDashboard] profile fetch result:', data, 'error:', error);
+      const { data } = await supabase.from('profiles').select('display_name').eq('id', userId).single();
       setDisplayName(data?.display_name || '');
     };
     fetchDisplayName();
   }, [user]);
 
-  // Handler to start recording and show the live screen in workspace
   const handleStartLiveScreen = (stream: MediaStream) => {
     setLiveStream(stream);
     setRecording(true);
-    setRecordedVideoUrl(null); // Clear preview when starting a new recording
+    setRecordedVideoUrl(null);
     window.dispatchEvent(new CustomEvent('sparky-recording-visibility', { detail: true }));
   };
 
-  // --- PiP support: hidden video for PiP ---
   useEffect(() => {
     const pipHandler = () => {
       if (document.pictureInPictureElement) {
@@ -78,11 +73,8 @@ const UserDashboard: React.FC = () => {
     }
   }, [liveStream, recording]);
 
-  // Handler to set the recorded video URL and auto-select the new recording in ScreenRecorder
   const handleSetRecordedVideoUrl = (url: string | null) => {
-    console.log('setRecordedVideoUrl called with:', url);
     setRecordedVideoUrl(url);
-    // Dispatch a custom event to ScreenRecorder to auto-select the new recording
     if (url) {
       window.dispatchEvent(new CustomEvent('sparky-auto-select-recording', { detail: url }));
     }
@@ -91,7 +83,6 @@ const UserDashboard: React.FC = () => {
   return (
     <>
       <Header />
-      {/* Hidden video for PiP support, always available during recording */}
       {recording && liveStream && (
         <video
           ref={pipVideoRef}
@@ -102,16 +93,10 @@ const UserDashboard: React.FC = () => {
         />
       )}
       <main style={{ width: '100%', maxWidth: 1200, margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', padding: 32, position: 'relative', minHeight: '100vh', background: '#f7f8fa', fontSize: 12 }}>
-        <div style={{ height: 64 }} /> {/* Spacer for header */}
-        <h2 style={{ margin: 0, fontSize: 32, textAlign: 'center', fontWeight: 700, marginBottom: 32 }}>User Dashboard</h2>
-        {displayName && (
-          <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 16 }}>Welcome, {displayName}!</div>
-        )}
-        {/* New Recording Panel (always visible) */}
+        <div style={{ height: 64 }} />
+        <h2 style={{ margin: 0, fontSize: 32, textAlign: 'center', fontWeight: 700, marginBottom: 32 }}>Recording Dashboard</h2>
         <RecordingPanel setRecordedVideoUrl={handleSetRecordedVideoUrl} onStartLiveScreen={handleStartLiveScreen} />
-        {/* Recording Preview and List */}
         <ScreenRecorder recordedVideoUrl={recordedVideoUrl} />
-        {/* Remove local preview video here to avoid double preview and confusion */}
       </main>
     </>
   );

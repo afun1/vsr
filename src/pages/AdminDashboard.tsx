@@ -31,9 +31,9 @@ const AdminDashboard: React.FC = () => {
   const [userPage, setUserPage] = useState(1);
   const [recordingPage, setRecordingPage] = useState(1);
   const [memberPage, setMemberPage] = useState(1);
-  const USERS_PER_PAGE = 10;
+  const [usersPerPage, setUsersPerPage] = useState(RECORDINGS_PER_PAGE_OPTIONS[0]);
   const [recordingsPerPage, setRecordingsPerPage] = useState(RECORDINGS_PER_PAGE_OPTIONS[0]);
-  const MEMBERS_PER_PAGE = 10;
+  const [membersPerPage, setMembersPerPage] = useState(RECORDINGS_PER_PAGE_OPTIONS[0]);
 
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [selectedRecordingIds, setSelectedRecordingIds] = useState<string[]>([]);
@@ -268,11 +268,11 @@ const AdminDashboard: React.FC = () => {
     setSelectedMemberIds([]);
   };
 
-  const userPageCount = Math.max(1, Math.ceil(filteredUsers.length / USERS_PER_PAGE));
+  const userPageCount = Math.max(1, Math.ceil(filteredUsers.length / usersPerPage));
   const recordingPageCount = Math.max(1, Math.ceil(filteredRecordings.length / recordingsPerPage));
   const pagedRecordings = filteredRecordings.slice((recordingPage-1)*recordingsPerPage, recordingPage*recordingsPerPage);
-  const memberPageCount = Math.max(1, Math.ceil(filteredMembers.length / MEMBERS_PER_PAGE));
-  const pagedMembers = filteredMembers.slice((memberPage-1)*MEMBERS_PER_PAGE, memberPage*MEMBERS_PER_PAGE);
+  const memberPageCount = Math.max(1, Math.ceil(filteredMembers.length / membersPerPage));
+  const pagedMembers = filteredMembers.slice((memberPage-1)*membersPerPage, memberPage*membersPerPage);
 
   return (
     <>
@@ -400,6 +400,21 @@ const AdminDashboard: React.FC = () => {
               style={{ fontSize: 16, padding: '6px 14px', width: 340 }}
             />
             <button type="submit" style={{ background: 'rgb(25, 118, 210)', color: 'rgb(255, 255, 255)', border: 'none', borderRadius: 4, padding: '7px 18px', fontWeight: 600 }}>User Lookup</button>
+            <span style={{ color: '#888', fontSize: 15, marginLeft: 16 }}>
+              Files per page:
+              <select
+                value={usersPerPage}
+                onChange={e => {
+                  setUserPage(1);
+                  setUsersPerPage(Number(e.target.value));
+                }}
+                style={{ marginLeft: 8, fontSize: 15, padding: '2px 8px' }}
+              >
+                {RECORDINGS_PER_PAGE_OPTIONS.map(opt => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </select>
+            </span>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flex: 1 }}>
               <button onClick={handleBulkPromoteUsers} disabled={selectedUserIds.length === 0} style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>Promote to Admin</button>
               <button onClick={() => exportCSV(filteredUsers, ['id','email','display_name','role'], 'users.csv')} style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>Export Users CSV</button>
@@ -410,7 +425,7 @@ const AdminDashboard: React.FC = () => {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px #0001', marginBottom: 24 }}>
           <thead>
             <tr>
-              <th><input type="checkbox" checked={filteredUsers.length > 0 && filteredUsers.slice((userPage-1)*USERS_PER_PAGE, userPage*USERS_PER_PAGE).every(u => selectedUserIds.includes(u.id))} onChange={e => setSelectedUserIds(e.target.checked ? filteredUsers.slice((userPage-1)*USERS_PER_PAGE, userPage*USERS_PER_PAGE).map(u => u.id) : [])} /></th>
+              <th><input type="checkbox" checked={filteredUsers.length > 0 && filteredUsers.slice((userPage-1)*usersPerPage, userPage*usersPerPage).every(u => selectedUserIds.includes(u.id))} onChange={e => setSelectedUserIds(e.target.checked ? filteredUsers.slice((userPage-1)*usersPerPage, userPage*usersPerPage).map(u => u.id) : [])} /></th>
               <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Email</th>
               <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Display Name</th>
               <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Role</th>
@@ -420,7 +435,7 @@ const AdminDashboard: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {filteredUsers.slice((userPage-1)*USERS_PER_PAGE, userPage*USERS_PER_PAGE).map(u => (
+            {filteredUsers.slice((userPage-1)*usersPerPage, userPage*usersPerPage).map(u => (
               <tr key={u.id}>
                 <td><input type="checkbox" checked={selectedUserIds.includes(u.id)} onChange={e => setSelectedUserIds(e.target.checked ? [...selectedUserIds, u.id] : selectedUserIds.filter(id => id !== u.id))} /></td>
                 <td>
@@ -477,9 +492,57 @@ const AdminDashboard: React.FC = () => {
           </tbody>
         </table>
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          <button disabled={userPage === 1} onClick={() => setUserPage(p => Math.max(1, p-1))}>Prev</button>
-          <span>Page {userPage} of {userPageCount}</span>
-          <button disabled={userPage === userPageCount} onClick={() => setUserPage(p => Math.min(userPageCount, p+1))}>Next</button>
+          <div style={{ display: 'flex', gap: 0 }}>
+            <a
+              href="#"
+              onClick={e => {
+                e.preventDefault();
+                if (userPage > 1) setUserPage(p => Math.max(1, p - 1));
+              }}
+              style={{
+                color: userPage === 1 ? '#888' : '#1976d2',
+                textDecoration: 'underline',
+                pointerEvents: userPage === 1 ? 'none' : 'auto',
+                fontWeight: 600,
+                marginRight: 12
+              }}
+            >
+              Prev
+            </a>
+            {Array.from({ length: userPageCount }, (_, i) => (
+              <a
+                key={i + 1}
+                href="#"
+                onClick={e => {
+                  e.preventDefault();
+                  setUserPage(i + 1);
+                }}
+                style={{
+                  color: userPage === i + 1 ? '#28a745' : '#1976d2',
+                  textDecoration: 'underline',
+                  fontWeight: userPage === i + 1 ? 700 : 600,
+                  marginRight: 12
+                }}
+              >
+                {i + 1}
+              </a>
+            ))}
+            <a
+              href="#"
+              onClick={e => {
+                e.preventDefault();
+                if (userPage < userPageCount) setUserPage(p => Math.min(userPageCount, p + 1));
+              }}
+              style={{
+                color: userPage === userPageCount ? '#888' : '#1976d2',
+                textDecoration: 'underline',
+                pointerEvents: userPage === userPageCount ? 'none' : 'auto',
+                fontWeight: 600
+              }}
+            >
+              Next
+            </a>
+          </div>
         </div>
         <hr />
         <h3>Member Management</h3>
@@ -494,6 +557,21 @@ const AdminDashboard: React.FC = () => {
               style={{ fontSize: 16, padding: '6px 14px', width: 340 }}
             />
             <button type="submit" style={{ background: 'rgb(25, 118, 210)', color: 'rgb(255, 255, 255)', border: 'none', borderRadius: 4, padding: '7px 18px', fontWeight: 600 }}>Member Lookup</button>
+            <span style={{ color: '#888', fontSize: 15, marginLeft: 16 }}>
+              Files per page:
+              <select
+                value={membersPerPage}
+                onChange={e => {
+                  setMemberPage(1);
+                  setMembersPerPage(Number(e.target.value));
+                }}
+                style={{ marginLeft: 8, fontSize: 15, padding: '2px 8px' }}
+              >
+                {RECORDINGS_PER_PAGE_OPTIONS.map(opt => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </select>
+            </span>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flex: 1 }}>
               <button onClick={() => exportMembersCSV(filteredMembers, ['id','email','name','first_name','last_name','created_at'], 'members.csv')} style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>Export Members CSV</button>
               <button onClick={handleBulkDeleteMembers} disabled={selectedMemberIds.length === 0} style={{ background: '#e53935', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>Delete Selected</button>
@@ -525,9 +603,57 @@ const AdminDashboard: React.FC = () => {
           </tbody>
         </table>
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          <button disabled={memberPage === 1} onClick={() => setMemberPage(p => Math.max(1, p-1))}>Prev</button>
-          <span>Page {memberPage} of {memberPageCount}</span>
-          <button disabled={memberPage === memberPageCount} onClick={() => setMemberPage(p => Math.min(memberPageCount, p+1))}>Next</button>
+          <div style={{ display: 'flex', gap: 0 }}>
+            <a
+              href="#"
+              onClick={e => {
+                e.preventDefault();
+                if (memberPage > 1) setMemberPage(p => Math.max(1, p - 1));
+              }}
+              style={{
+                color: memberPage === 1 ? '#888' : '#1976d2',
+                textDecoration: 'underline',
+                pointerEvents: memberPage === 1 ? 'none' : 'auto',
+                fontWeight: 600,
+                marginRight: 12
+              }}
+            >
+              Prev
+            </a>
+            {Array.from({ length: memberPageCount }, (_, i) => (
+              <a
+                key={i + 1}
+                href="#"
+                onClick={e => {
+                  e.preventDefault();
+                  setMemberPage(i + 1);
+                }}
+                style={{
+                  color: memberPage === i + 1 ? '#28a745' : '#1976d2',
+                  textDecoration: 'underline',
+                  fontWeight: memberPage === i + 1 ? 700 : 600,
+                  marginRight: 12
+                }}
+              >
+                {i + 1}
+              </a>
+            ))}
+            <a
+              href="#"
+              onClick={e => {
+                e.preventDefault();
+                if (memberPage < memberPageCount) setMemberPage(p => Math.min(memberPageCount, p + 1));
+              }}
+              style={{
+                color: memberPage === memberPageCount ? '#888' : '#1976d2',
+                textDecoration: 'underline',
+                pointerEvents: memberPage === memberPageCount ? 'none' : 'auto',
+                fontWeight: 600
+              }}
+            >
+              Next
+            </a>
+          </div>
         </div>
         <hr />
         <h3>Recordings Management</h3>
@@ -681,54 +807,58 @@ const AdminDashboard: React.FC = () => {
             })}
           </tbody>
         </table>
-        {showTranscriptModal && (
-          <div style={{
-            position: 'fixed',
-            top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(0,0,0,0.35)',
-            zIndex: 1000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <div style={{
-              background: '#fff',
-              borderRadius: 8,
-              maxWidth: 600,
-              width: '90%',
-              maxHeight: '80vh',
-              overflowY: 'auto',
-              boxShadow: '0 4px 32px #0003',
-              padding: 32,
-              position: 'relative'
-            }}>
-              <button
-                onClick={() => setShowTranscriptModal(false)}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          <div style={{ display: 'flex', gap: 0 }}>
+            <a
+              href="#"
+              onClick={e => {
+                e.preventDefault();
+                if (recordingPage > 1) setRecordingPage(p => Math.max(1, p - 1));
+              }}
+              style={{
+                color: recordingPage === 1 ? '#888' : '#1976d2',
+                textDecoration: 'underline',
+                pointerEvents: recordingPage === 1 ? 'none' : 'auto',
+                fontWeight: 600,
+                marginRight: 12
+              }}
+            >
+              Prev
+            </a>
+            {Array.from({ length: recordingPageCount }, (_, i) => (
+              <a
+                key={i + 1}
+                href="#"
+                onClick={e => {
+                  e.preventDefault();
+                  setRecordingPage(i + 1);
+                }}
                 style={{
-                  position: 'absolute',
-                  top: 16,
-                  right: 16,
-                  background: '#1976d2',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: 4,
-                  padding: '6px 16px',
-                  fontWeight: 600,
-                  fontSize: 15,
-                  cursor: 'pointer'
+                  color: recordingPage === i + 1 ? '#28a745' : '#1976d2',
+                  textDecoration: 'underline',
+                  fontWeight: recordingPage === i + 1 ? 700 : 600,
+                  marginRight: 12
                 }}
               >
-                Close
-              </button>
-              <h3 style={{ marginTop: 0, marginBottom: 18 }}>{modalTitle} Transcript</h3>
-              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 15, color: '#222', margin: 0 }}>{modalTranscript}</pre>
-            </div>
+                {i + 1}
+              </a>
+            ))}
+            <a
+              href="#"
+              onClick={e => {
+                e.preventDefault();
+                if (recordingPage < recordingPageCount) setRecordingPage(p => Math.min(recordingPageCount, p + 1));
+              }}
+              style={{
+                color: recordingPage === recordingPageCount ? '#888' : '#1976d2',
+                textDecoration: 'underline',
+                pointerEvents: recordingPage === recordingPageCount ? 'none' : 'auto',
+                fontWeight: 600
+              }}
+            >
+              Next
+            </a>
           </div>
-        )}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          <button disabled={recordingPage === 1} onClick={() => setRecordingPage(p => Math.max(1, p-1))}>Prev</button>
-          <span>Page {recordingPage} of {recordingPageCount}</span>
-          <button disabled={recordingPage === recordingPageCount} onClick={() => setRecordingPage(p => Math.min(recordingPageCount, p+1))}>Next</button>
         </div>
         <hr />
         <h3>Audit Logs</h3>

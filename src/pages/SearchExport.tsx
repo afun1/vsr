@@ -148,7 +148,7 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
   static getDerivedStateFromError(error: any) {
     return { hasError: true, error };
   }
-  componentDidCatch(error: any, info: any) {}
+  componentDidCatch() {}
   render() {
     if (this.state.hasError) {
       return <div style={{color: 'red', padding: 32}}><h2>Something went wrong.</h2><pre>{String(this.state.error)}</pre></div>;
@@ -192,8 +192,8 @@ const SearchExport: React.FC = () => {
     if (clientFilter) query = query.eq('client_id', clientFilter);
     if (dateFrom) query = query.gte('created_at', dateFrom);
     if (dateTo) query = query.lte('created_at', dateTo + 'T23:59:59');
-    const { data, error } = await query;
-    if (!error && data) {
+    const { data } = await query;
+    if (data) {
       setAllRecordings(data);
       setFilteredRecordings(data);
     }

@@ -274,7 +274,6 @@ const AdminDashboard: React.FC = () => {
     <>
       <Header />
       <div style={{ padding: 20, maxWidth: 1400, margin: '0 auto', paddingTop: 100 }}>
-        {/* ...existing code... */}
         <h3>Recordings Management</h3>
         <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -492,7 +491,6 @@ const AdminDashboard: React.FC = () => {
             </a>
           </div>
         </div>
-        {/* ...existing code... */}
       </div>
     </>
   );

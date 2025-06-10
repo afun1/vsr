@@ -35,7 +35,7 @@ const UserDashboard: React.FC = () => {
 
   useEffect(() => {
     const fetchDisplayName = async () => {
-      const { user: userData } = await supabase.auth.getUser();
+      const { data: userData } = await supabase.auth.getUser();
       const userId = userData?.id;
       if (!userId) return;
       await supabase.from('profiles').select('display_name').eq('id', userId).single();

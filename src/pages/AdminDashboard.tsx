@@ -45,10 +45,6 @@ const AdminDashboard: React.FC = () => {
   const [memberSearch, setMemberSearch] = useState('');
   const [copiedUrlId, setCopiedUrlId] = useState<string | null>(null);
 
-  const [showTranscriptModal, setShowTranscriptModal] = useState(false);
-  const [modalTranscript, setModalTranscript] = useState('');
-  const [modalTitle, setModalTitle] = useState('');
-
   useEffect(() => {
     if (role === 'admin') {
       supabase
@@ -771,9 +767,9 @@ const AdminDashboard: React.FC = () => {
                                 style={{ color: '#1976d2', marginRight: 12 }}
                                 onClick={e => {
                                   e.preventDefault();
-                                  setModalTranscript(r.transcript);
-                                  setModalTitle(clientName);
-                                  setShowTranscriptModal(true);
+                                  // setModalTranscript(r.transcript);
+                                  // setModalTitle(clientName);
+                                  // setShowTranscriptModal(true);
                                 }}
                               >
                                 Read More

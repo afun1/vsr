@@ -104,12 +104,6 @@ const AdminDashboard: React.FC = () => {
     setUsers(users => users.map(u => u.id === userId ? { ...u, role: newRole } : u));
   };
 
-  const handleDeleteRecording = async (recId: string) => {
-    if (!window.confirm('Delete this recording? This cannot be undone.')) return;
-    await supabase.from('recordings').delete().eq('id', recId);
-    setRecordings(recs => recs.filter(r => r.id !== recId));
-  };
-
   const exportCSV = (rows: any[], columns: string[], filename: string) => {
     const csv = [columns.join(',')].concat(rows.map(r => columns.map(c => JSON.stringify(r[c] ?? '')).join(','))).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });

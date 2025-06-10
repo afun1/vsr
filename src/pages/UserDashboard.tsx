@@ -12,7 +12,6 @@ const UserDashboard: React.FC = () => {
   const [liveStream, setLiveStream] = useState<MediaStream | null>(null);
   const liveVideoRef = useRef<HTMLVideoElement | null>(null);
   const pipVideoRef = useRef<HTMLVideoElement | null>(null);
-  const [displayName, setDisplayName] = useState<string>('');
 
   useEffect(() => {
     if (liveVideoRef.current && liveStream) {
@@ -40,7 +39,6 @@ const UserDashboard: React.FC = () => {
       const userId = userData?.user?.id;
       if (!userId) return;
       const { data } = await supabase.from('profiles').select('display_name').eq('id', userId).single();
-      setDisplayName(data?.display_name || '');
     };
     fetchDisplayName();
   }, [user]);

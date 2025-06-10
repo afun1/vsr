@@ -3,14 +3,108 @@ import { supabase } from '../auth/supabaseClient';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import Header from '../Header';
+// @ts-ignore
+import FileSaver from 'file-saver';
 
-// --- COLUMN CONFIGURATION ---
 type ColumnConfig = {
   id: string;
   label: string;
   accessor: (rec: any) => any;
   default: boolean;
   visible?: boolean;
+};
+
+function formatDateForFilename(dateString: string) {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  let hours = date.getHours();
+  const minutes = date.getMinutes();
+  const seconds = date.getSeconds();
+  const ampm = hours >= 12 ? 'pm' : 'am';
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  return `${year}-${month}-${day}-at-${hours}-${pad(minutes)}-${pad(seconds)}${ampm}`;
+}
+
+const TRANSCRIPT_PREVIEW_LENGTH = 200;
+
+const TranscriptCell: React.FC<{ transcript: string, rec: any, onReadMore: (full: string, title: string, filename: string) => void }> = ({ transcript, rec, onReadMore }) => {
+  let clientArr: any[] = [];
+  if (Array.isArray(rec.clients)) {
+    clientArr = rec.clients;
+  } else if (rec.clients) {
+    clientArr = [rec.clients];
+  }
+  const clientDisplayNames = clientArr.map((clientObj: any) => {
+    if (!clientObj) return '';
+    if (clientObj.first_name && clientObj.last_name) return `${clientObj.first_name} ${clientObj.last_name}`;
+    if (clientObj.name) return clientObj.name;
+    if (clientObj.email) return clientObj.email;
+    return '';
+  }).filter(Boolean);
+  const displayName = rec.profiles?.display_name || '-';
+  const cardTitle = `${clientDisplayNames.length > 0 ? clientDisplayNames.join(',') : 'Recording'}-by-${displayName.replace(/\s+/g, '')}-${formatDateForFilename(rec.created_at)}`;
+  const truncated = transcript && transcript.length > TRANSCRIPT_PREVIEW_LENGTH
+    ? transcript.slice(0, TRANSCRIPT_PREVIEW_LENGTH).replace(/\n/g, ' ') + '...'
+    : transcript;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <span
+        style={{
+          whiteSpace: 'pre-line',
+          display: '-webkit-box',
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical',
+          overflow: 'hidden'
+        }}
+      >
+        {transcript
+          ? truncated
+          : <span style={{ color: '#bbb' }}>No transcript</span>
+        }
+      </span>
+      <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+        <button
+          style={{
+            background: 'none',
+            color: '#1976d2',
+            border: 'none',
+            textDecoration: 'underline',
+            cursor: 'pointer',
+            fontSize: 13,
+            fontWeight: 600,
+            padding: 0
+          }}
+          onClick={() => onReadMore(transcript || 'No transcript', cardTitle, `${cardTitle}.txt`)}
+        >
+          Read More
+        </button>
+        <button
+          style={{
+            background: 'none',
+            color: '#28a745',
+            border: 'none',
+            textDecoration: 'underline',
+            cursor: 'pointer',
+            fontSize: 13,
+            fontWeight: 600,
+            padding: 0
+          }}
+          onClick={() => {
+            const text = transcript || 'No transcript';
+            const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+            FileSaver.saveAs(blob, `${cardTitle}.txt`);
+          }}
+        >
+          Download Text
+        </button>
+      </div>
+    </div>
+  );
 };
 
 const DEFAULT_COLUMNS: ColumnConfig[] = [
@@ -20,8 +114,8 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
   { id: 'sparky', label: 'Sparky Username', accessor: (rec: any) => rec.clients?.sparky_username || rec.client_sparky_username || '', default: true },
   { id: 'phone', label: 'Phone', accessor: (rec: any) => rec.clients?.phone || rec.client_phone || '', default: true },
   { id: 'user', label: 'User', accessor: (rec: any) => rec.profiles?.display_name || '', default: true },
-  { id: 'transcript', label: 'Transcript', accessor: (rec: any) => <TranscriptCell transcript={rec.transcript || ''} />, default: true },
-  { id: 'video', label: 'Video', accessor: (rec: any) => rec.video_url ? <a href={rec.video_url} target="_blank" rel="noopener noreferrer">View</a> : '', default: true },
+  { id: 'transcript', label: 'Transcript', accessor: (rec: any) => rec, default: true },
+  { id: 'video', label: 'Video', accessor: (rec: any) => rec.video_url ? <a href={rec.video_url} target="_blank" rel="noopener noreferrer">Play</a> : '', default: true },
 ];
 
 function getStoredColumns(): ColumnConfig[] {
@@ -29,7 +123,6 @@ function getStoredColumns(): ColumnConfig[] {
     const stored = localStorage.getItem('searchExportColumns');
     if (stored) {
       const parsed = JSON.parse(stored);
-      // Ensure all columns have 'visible' property
       return DEFAULT_COLUMNS.map(def => {
         const match = parsed.find((c: any) => c.id === def.id);
         return {
@@ -38,20 +131,15 @@ function getStoredColumns(): ColumnConfig[] {
         };
       });
     }
-  } catch (e) {
-    console.error('Error parsing stored columns', e);
-  }
-  // fallback: ensure all have visible
+  } catch (e) {}
   return DEFAULT_COLUMNS.map(c => ({ ...c, visible: c.default }));
 }
 
 function storeColumns(cols: ColumnConfig[]) {
-  // Only store id and visible to avoid function serialization issues
   const toStore = cols.map(c => ({ id: c.id, visible: c.visible }));
   localStorage.setItem('searchExportColumns', JSON.stringify(toStore));
 }
 
-// --- ERROR BOUNDARY ---
 class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: any}> {
   constructor(props: any) {
     super(props);
@@ -60,9 +148,7 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
   static getDerivedStateFromError(error: any) {
     return { hasError: true, error };
   }
-  componentDidCatch(error: any, info: any) {
-    console.error('ErrorBoundary caught:', error, info);
-  }
+  componentDidCatch(error: any, info: any) {}
   render() {
     if (this.state.hasError) {
       return <div style={{color: 'red', padding: 32}}><h2>Something went wrong.</h2><pre>{String(this.state.error)}</pre></div>;
@@ -70,25 +156,6 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
     return this.props.children;
   }
 }
-
-const TRANSCRIPT_PREVIEW_LENGTH = 200;
-
-const TranscriptCell: React.FC<{ transcript: string }> = ({ transcript }) => {
-  const [expanded, setExpanded] = useState(false);
-  if (!transcript) return <span style={{ color: '#888' }}>(No transcript)</span>;
-  if (transcript.length <= TRANSCRIPT_PREVIEW_LENGTH) return <span>{transcript}</span>;
-  return (
-    <>
-      <span>{expanded ? transcript : transcript.slice(0, TRANSCRIPT_PREVIEW_LENGTH) + '... '}</span>
-      <button
-        style={{ marginLeft: 8, fontSize: 12, padding: '2px 8px' }}
-        onClick={() => setExpanded(e => !e)}
-      >
-        {expanded ? 'Collapse' : 'Expand'}
-      </button>
-    </>
-  );
-};
 
 const SearchExport: React.FC = () => {
   const [search, setSearch] = useState('');
@@ -104,12 +171,16 @@ const SearchExport: React.FC = () => {
   const [columns, setColumns] = useState(() => getStoredColumns());
   const [showColSelector, setShowColSelector] = useState(false);
 
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalTranscript, setModalTranscript] = useState('');
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalFilename, setModalFilename] = useState('');
+
   useEffect(() => {
     supabase.from('clients').select('id, name, email').then(({ data }) => {
       if (data) setAllClients(data);
     });
     fetchRecordings();
-    // eslint-disable-next-line
   }, []);
 
   const fetchRecordings = async () => {
@@ -123,7 +194,6 @@ const SearchExport: React.FC = () => {
     if (dateTo) query = query.lte('created_at', dateTo + 'T23:59:59');
     const { data, error } = await query;
     if (!error && data) {
-      console.log('DEBUG: fetched recordings', data);
       setAllRecordings(data);
       setFilteredRecordings(data);
     }
@@ -134,31 +204,21 @@ const SearchExport: React.FC = () => {
   useEffect(() => {
     if (!search.trim()) {
       setFilteredRecordings(allRecordings);
-      console.log('DEBUG: search empty, showing allRecordings', allRecordings.length);
       return;
     }
     const lower = search.toLowerCase();
     const filtered = allRecordings.filter(rec => {
-      // Client fields
       const clientName = (rec.clients?.name || rec.client_name || '').toLowerCase();
       const clientFirst = (rec.clients?.first_name || '').toLowerCase();
       const clientLast = (rec.clients?.last_name || '').toLowerCase();
       const clientEmail = (rec.clients?.email || rec.client_email || '').toLowerCase();
       const clientSparky = (rec.clients?.sparky_username || rec.client_sparky_username || '').toLowerCase();
       const clientPhone = (rec.clients?.phone || rec.client_phone || '').toLowerCase();
-      // Recorder display name
       const userDisplay = (rec.profiles?.display_name || '').toLowerCase();
-      // Transcript
       const transcript = (rec.transcript || '').toLowerCase();
-      // IDs (force string)
       const userId = (rec.user_id !== undefined && rec.user_id !== null) ? String(rec.user_id).toLowerCase() : '';
       const clientId = (rec.client_id !== undefined && rec.client_id !== null) ? String(rec.client_id).toLowerCase() : '';
       const recId = (rec.id !== undefined && rec.id !== null) ? String(rec.id).toLowerCase() : '';
-      // Debug log for userId, clientId, recId
-      if (search.toLowerCase() === userId || search.toLowerCase() === clientId || search.toLowerCase() === recId) {
-        console.log('DEBUG: record matches by id', {userId, clientId, recId, rec});
-      }
-      // Match any fragment
       return (
         clientName.includes(lower) ||
         clientFirst.includes(lower) ||
@@ -174,12 +234,10 @@ const SearchExport: React.FC = () => {
       );
     });
     setFilteredRecordings(filtered);
-    console.log('DEBUG: filteredRecordings after search', filtered.length, 'search:', search);
   }, [search, allRecordings]);
 
   useEffect(() => { storeColumns(columns); }, [columns]);
 
-  // --- COLUMN SELECTOR UI ---
   const moveColumn = (idx: number, dir: -1 | 1) => {
     const newCols = [...columns];
     const target = idx + dir;
@@ -194,14 +252,14 @@ const SearchExport: React.FC = () => {
     setColumns(newCols);
   };
 
-  // --- FILTERED COLUMNS ---
   const visibleColumns = columns.filter(c => c.visible !== false);
 
-  // --- EXPORTS: use visibleColumns ---
   const exportToCSV = () => {
     const headers = visibleColumns.map(c => c.label);
     const rows = filteredRecordings.map(rec => visibleColumns.map(c => {
-      const val = c.accessor(rec);
+      let val = c.id === 'transcript'
+        ? (rec.transcript || '')
+        : c.accessor(rec);
       if (typeof val === 'string') return val.replace(/\n/g, ' ');
       if (typeof val === 'object' && val?.props?.children) return val.props.children;
       return val;
@@ -224,7 +282,9 @@ const SearchExport: React.FC = () => {
     const rows = filteredRecordings.map(rec => {
       const row: any = {};
       visibleColumns.forEach(c => {
-        let val = c.accessor(rec);
+        let val = c.id === 'transcript'
+          ? (rec.transcript || '')
+          : c.accessor(rec);
         if (typeof val === 'object' && val?.props?.children) val = val.props.children;
         row[c.label] = val;
       });
@@ -243,13 +303,22 @@ const SearchExport: React.FC = () => {
       doc.setFontSize(14);
       let y = 20;
       visibleColumns.forEach(col => {
-        let val = col.accessor(rec);
+        let val = col.id === 'transcript'
+          ? (rec.transcript || '')
+          : col.accessor(rec);
         if (typeof val === 'object' && val?.props?.children) val = val.props.children;
         doc.text(`${col.label}: ${val}`, 10, y);
         y += 10;
       });
     });
     doc.save(`recordings-export-${new Date().toISOString().slice(0, 10)}.pdf`);
+  };
+
+  const handleReadMore = (transcript: string, title: string, filename: string) => {
+    setModalTranscript(transcript);
+    setModalTitle(title);
+    setModalFilename(filename);
+    setModalOpen(true);
   };
 
   return (
@@ -319,7 +388,6 @@ const SearchExport: React.FC = () => {
         </div>
         {loading ? <div>Loading...</div> : (
           <div style={{ maxHeight: 400, overflowY: 'auto', border: '1px solid #eee', borderRadius: 6, marginTop: 16 }}>
-            {/* COLUMN SELECTOR DROPDOWN */}
             <div style={{ position: 'relative', display: 'inline-block', marginBottom: 8 }}>
               <button onClick={() => setShowColSelector(v => !v)} style={{ fontSize: 14, padding: '4px 12px' }}>Columns</button>
               {showColSelector && (
@@ -365,13 +433,89 @@ const SearchExport: React.FC = () => {
                           ...(col.id === 'video' ? { maxWidth: 120, wordBreak: 'break-all' } : {}),
                         }}
                       >
-                        {col.accessor(rec)}
+                        {col.id === 'transcript'
+                          ? <TranscriptCell transcript={rec.transcript || ''} rec={rec} onReadMore={handleReadMore} />
+                          : col.accessor(rec)
+                        }
                       </td>
                     ))}
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+        {modalOpen && (
+          <div style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.32)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <div style={{
+              background: '#fff',
+              borderRadius: 10,
+              maxWidth: 480,
+              width: '90%',
+              padding: 32,
+              boxShadow: '0 8px 32px #0003',
+              position: 'relative'
+            }}>
+              <h3 style={{ marginTop: 0, marginBottom: 16 }}>{modalTitle}</h3>
+              <div style={{
+                maxHeight: 340,
+                overflowY: 'auto',
+                whiteSpace: 'pre-line',
+                fontSize: 15,
+                color: '#222',
+                marginBottom: 24
+              }}>
+                {modalTranscript}
+              </div>
+              <button
+                onClick={() => {
+                  const text = modalTranscript || 'No transcript';
+                  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+                  FileSaver.saveAs(blob, modalFilename || 'transcript.txt');
+                }}
+                style={{
+                  background: 'none',
+                  color: '#28a745',
+                  border: 'none',
+                  textDecoration: 'underline',
+                  cursor: 'pointer',
+                  fontSize: 15,
+                  fontWeight: 600,
+                  marginRight: 16,
+                  position: 'absolute',
+                  left: 32,
+                  bottom: 24
+                }}
+              >
+                Download Text
+              </button>
+              <button
+                onClick={() => setModalOpen(false)}
+                style={{
+                  background: '#1976d2',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 6,
+                  padding: '10px 28px',
+                  fontSize: 16,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  position: 'absolute',
+                  right: 24,
+                  bottom: 24
+                }}
+              >
+                Close
+              </button>
+            </div>
           </div>
         )}
       </div>

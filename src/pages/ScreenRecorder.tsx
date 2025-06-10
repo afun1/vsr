@@ -4,9 +4,24 @@ import { useAuth } from '../auth/AuthContext';
 // @ts-ignore
 import FileSaver from 'file-saver';
 
-// --- Main ScreenRecorder component (sidebar fully removed) ---
 interface ScreenRecorderProps {
   recordedVideoUrl?: string | null;
+}
+
+function formatDateForFilename(dateString: string) {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  let hours = date.getHours();
+  const minutes = date.getMinutes();
+  const seconds = date.getSeconds();
+  const ampm = hours >= 12 ? 'pm' : 'am';
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  return `${year}-${month}-${day}-at-${hours}-${pad(minutes)}-${pad(seconds)}${ampm}`;
 }
 
 const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => {
@@ -16,25 +31,27 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
   const [selectedRecording, setSelectedRecording] = useState<any | null>(null);
   const [recording, setRecording] = useState(false);
   const [search, setSearch] = useState('');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalTranscript, setModalTranscript] = useState('');
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalFilename, setModalFilename] = useState('');
 
   useEffect(() => {
     const fetchRecordings = async () => {
       setLoading(true);
-      // Get the user's id from Supabase
       const { data: userData } = await supabase.auth.getUser();
       const userId = userData?.user?.id;
       if (!userId) { setRecordings([]); setLoading(false); return; }
       let query = supabase
         .from('recordings')
-        .select('id, user_id, video_url, created_at, client_id, clients:client_id (name, email, first_name, last_name), profiles:user_id (display_name, email)')
+        .select('id, user_id, video_url, created_at, client_id, clients:client_id (name, email, first_name, last_name), profiles:user_id (display_name, email), transcript')
         .order('created_at', { ascending: false })
-        .eq('user_id', userId); // Only current user's recordings
+        .eq('user_id', userId);
       const { data, error } = await query;
       if (error) {
         setLoading(false);
       } else setRecordings(data || []);
       setLoading(false);
-      // Auto-select and preview the latest recording if a new one was just added
       if (data && data.length > 0 && recordedVideoUrl) {
         const found = data.find(r => r.video_url === recordedVideoUrl);
         if (found) setSelectedRecording(found);
@@ -43,12 +60,10 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
     fetchRecordings();
   }, [user, recordedVideoUrl]);
 
-  // Listen for auto-select event from UserDashboard
   useEffect(() => {
     const handler = (e: any) => {
       const url = e.detail;
       if (!url) return;
-      // Try to find the recording with this video_url
       const found = recordings.find(r => r.video_url === url);
       if (found) setSelectedRecording(found);
     };
@@ -56,7 +71,6 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
     return () => window.removeEventListener('sparky-auto-select-recording', handler);
   }, [recordings]);
 
-  // Auto-select and preview the new recording if recordedVideoUrl changes
   useEffect(() => {
     if (recordedVideoUrl && recordings.length > 0) {
       const found = recordings.find(r => r.video_url === recordedVideoUrl);
@@ -64,7 +78,6 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
     }
   }, [recordedVideoUrl, recordings]);
 
-  // Re-fetch recordings and auto-select new recording when recordedVideoUrl changes
   useEffect(() => {
     if (!recordedVideoUrl) return;
     const fetchAndSelect = async () => {
@@ -74,7 +87,7 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
       if (!userId) { setRecordings([]); setLoading(false); return; }
       let query = supabase
         .from('recordings')
-        .select('id, user_id, video_url, created_at, client_id, clients:client_id (name, email, first_name, last_name), profiles:user_id (display_name, email)')
+        .select('id, user_id, video_url, created_at, client_id, clients:client_id (name, email, first_name, last_name), profiles:user_id (display_name, email), transcript')
         .order('created_at', { ascending: false })
         .eq('user_id', userId);
       const { data, error } = await query;
@@ -88,8 +101,6 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
     fetchAndSelect();
   }, [recordedVideoUrl]);
 
-  // --- UI Rendering ---
-  // --- Card-based layout for recordings (for dashboard) ---
   const liveVideoRef = useRef<HTMLVideoElement | null>(null);
   useEffect(() => {
     const pipHandler = () => {
@@ -101,10 +112,8 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
     return () => window.removeEventListener('sparky-pip-toggle', pipHandler);
   }, []);
 
-  // Ref for preview video
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
 
-  // Auto-play preview when selectedRecording changes
   useEffect(() => {
     if (selectedRecording && previewVideoRef.current) {
       previewVideoRef.current.currentTime = 0;
@@ -112,7 +121,6 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
     }
   }, [selectedRecording]);
 
-  // --- Filtered recordings based on search ---
   const filteredRecordings = recordings.filter(rec => {
     if (!search) return true;
     let clientArr: any[] = [];
@@ -121,11 +129,9 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
     } else if (rec.clients) {
       clientArr = [rec.clients];
     }
-    // Gather all possible client name fields (case-insensitive)
     const clientNames = clientArr.flatMap((clientObj: any) => {
       if (!clientObj) return [];
       const names: string[] = [];
-      // Add all possible name fragments for robust search
       if (clientObj.first_name && clientObj.last_name) {
         names.push(`${clientObj.first_name} ${clientObj.last_name}`);
         names.push(clientObj.first_name);
@@ -139,10 +145,8 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
       if (clientObj.email) names.push(clientObj.email);
       return names;
     });
-    // Add display name and email from profiles (recorder)
     const displayName = rec.profiles?.display_name || '';
     const displayEmail = rec.profiles?.email || '';
-    // Add all fields to be searched
     const fields = [...clientNames, displayName, displayEmail].map(f => (f || '').toLowerCase());
     const searchLower = search.toLowerCase();
     return fields.some(f => f.includes(searchLower));
@@ -150,7 +154,6 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
 
   return (
     <div>
-      {/* Search/filter input for recordings by member/client name/email */}
       <div style={{ width: 480, margin: '0 auto', marginBottom: 16, display: 'flex', justifyContent: 'center' }}>
         <input
           type="text"
@@ -160,7 +163,6 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
           style={{ width: '100%', padding: 10, borderRadius: 6, border: '1px solid #ccc', fontSize: 16 }}
         />
       </div>
-      {/* Preview panel only */}
       <div style={{ width: 480, background: '#fff', borderRadius: 10, boxShadow: '0 2px 12px #0001', padding: 24, margin: '0 auto', marginBottom: 32, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <h3>Recording Preview</h3>
         {selectedRecording && selectedRecording.video_url ? (
@@ -183,7 +185,6 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
           )}
         </div>
       </div>
-      {/* Card grid for user's recordings */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, marginTop: 24, justifyContent: 'center' }}>
         {filteredRecordings.length === 0 && !loading ? (
           <div style={{ color: '#888', fontSize: 16, textAlign: 'center', margin: '32px 0' }}>No recordings to display yet.</div>
@@ -191,14 +192,12 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
           filteredRecordings
             .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
             .map(rec => {
-              // Support both array and object for clients
               let clientArr: any[] = [];
               if (Array.isArray(rec.clients)) {
                 clientArr = rec.clients;
               } else if (rec.clients) {
                 clientArr = [rec.clients];
               }
-              // Gather all possible client name fields for display
               const clientDisplayNames = clientArr.map((clientObj: any) => {
                 if (!clientObj) return '';
                 if (clientObj.first_name && clientObj.last_name) return `${clientObj.first_name} ${clientObj.last_name}`;
@@ -208,9 +207,15 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
               }).filter(Boolean);
               const displayName = rec.profiles?.display_name || '-';
               const createdAt = rec.created_at ? new Date(rec.created_at).toLocaleString() : '-';
-              const isSelected = selectedRecording && selectedRecording.id === rec.id;
+              const transcript = rec.transcript || '';
+              const maxChars = 180;
+              const isTruncated = transcript.length > maxChars;
+              const truncatedTranscript = isTruncated
+                ? transcript.slice(0, maxChars).replace(/\n/g, ' ') + '...'
+                : transcript;
+              const cardTitle = `${clientDisplayNames.length > 0 ? clientDisplayNames.join(',') : 'Recording'}-by-${displayName.replace(/\s+/g, '')}-${formatDateForFilename(rec.created_at)}`;
               return (
-                <div key={rec.id} style={{ width: 240, background: isSelected ? '#e3f2fd' : '#fff', borderRadius: 10, boxShadow: isSelected ? '0 4px 16px #1976d233' : '0 2px 12px #0001', padding: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', border: isSelected ? '2px solid #1976d2' : '2px solid transparent' }}
+                <div key={rec.id} style={{ width: 240, background: selectedRecording && selectedRecording.id === rec.id ? '#e3f2fd' : '#fff', borderRadius: 10, boxShadow: selectedRecording && selectedRecording.id === rec.id ? '0 4px 16px #1976d233' : '0 2px 12px #0001', padding: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', border: selectedRecording && selectedRecording.id === rec.id ? '2px solid #1976d2' : '2px solid transparent' }}
                   onClick={() => setSelectedRecording(rec)}
                 >
                   {rec.video_url ? (
@@ -223,15 +228,12 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
                   ) : (
                     <div style={{ width: '100%', height: 135, background: '#eee', borderRadius: 8, marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888' }}>No Video</div>
                   )}
-                  {/* Show all client names/emails */}
                   <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 2 }}>
                     {clientDisplayNames.length > 0 ? clientDisplayNames.join(', ') : ''}
                   </div>
                   <div style={{ color: '#888', fontSize: 14, marginBottom: 2 }}>By: {displayName}</div>
                   <div style={{ color: '#888', fontSize: 13, marginBottom: 8 }}>{createdAt}</div>
-                  {/* Action Buttons Row */}
                   <div style={{ display: 'flex', gap: 12, marginTop: 8, justifyContent: 'center' }}>
-                    {/* Blue Play Button */}
                     <button
                       title="Play"
                       onClick={e => { e.stopPropagation(); setSelectedRecording(rec); }}
@@ -241,7 +243,6 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
                         <polygon points="6,4 16,10 6,16" fill="#fff" />
                       </svg>
                     </button>
-                    {/* Green Download Button */}
                     <button
                       title="Download"
                       onClick={async e => {
@@ -270,7 +271,6 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
                         <rect x="4" y="16" width="12" height="2" rx="1" fill="#fff" />
                       </svg>
                     </button>
-                    {/* Orange URL Button */}
                     <button
                       title="Copy URL"
                       onClick={e => {
@@ -285,15 +285,154 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
                       URL
                     </button>
                   </div>
+                  <div
+                    style={{
+                      width: '100%',
+                      minHeight: 54,
+                      maxHeight: 54,
+                      resize: 'none',
+                      fontSize: 13,
+                      color: '#333',
+                      marginTop: 8,
+                      marginBottom: 4,
+                      borderRadius: 6,
+                      border: '1px solid #ddd',
+                      background: '#fafbfc',
+                      overflow: 'hidden',
+                      lineHeight: '1.2',
+                      boxSizing: 'border-box',
+                      display: '-webkit-box',
+                      WebkitLineClamp: 3,
+                      WebkitBoxOrient: 'vertical',
+                      whiteSpace: 'pre-line'
+                    }}
+                  >
+                    {transcript
+                      ? truncatedTranscript
+                      : <span style={{ color: '#bbb' }}>No transcript</span>
+                    }
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 4, width: '100%', justifyContent: 'flex-end' }}>
+                    <button
+                      style={{
+                        background: 'none',
+                        color: '#1976d2',
+                        border: 'none',
+                        textDecoration: 'underline',
+                        cursor: 'pointer',
+                        fontSize: 13,
+                        fontWeight: 600
+                      }}
+                      onClick={e => {
+                        e.stopPropagation();
+                        setModalTranscript(transcript || 'No transcript');
+                        setModalTitle(cardTitle);
+                        setModalFilename(`${cardTitle}.txt`);
+                        setModalOpen(true);
+                      }}
+                    >
+                      Read More
+                    </button>
+                    <button
+                      style={{
+                        background: 'none',
+                        color: '#28a745',
+                        border: 'none',
+                        textDecoration: 'underline',
+                        cursor: 'pointer',
+                        fontSize: 13,
+                        fontWeight: 600
+                      }}
+                      onClick={e => {
+                        e.stopPropagation();
+                        const text = transcript || 'No transcript';
+                        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+                        FileSaver.saveAs(blob, `${cardTitle}.txt`);
+                      }}
+                    >
+                      Download Text
+                    </button>
+                  </div>
                 </div>
               );
             })
         )}
       </div>
-      {/* Control buttons for recording (visible only during live recording) */}
+      {modalOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.32)',
+          zIndex: 1000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          <div style={{
+            background: '#fff',
+            borderRadius: 10,
+            maxWidth: 480,
+            width: '90%',
+            padding: 32,
+            boxShadow: '0 8px 32px #0003',
+            position: 'relative'
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: 16 }}>{modalTitle}</h3>
+            <div style={{
+              maxHeight: 340,
+              overflowY: 'auto',
+              whiteSpace: 'pre-line',
+              fontSize: 15,
+              color: '#222',
+              marginBottom: 24
+            }}>
+              {modalTranscript}
+            </div>
+            <button
+              onClick={() => {
+                const text = modalTranscript || 'No transcript';
+                const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+                FileSaver.saveAs(blob, modalFilename || 'transcript.txt');
+              }}
+              style={{
+                background: 'none',
+                color: '#28a745',
+                border: 'none',
+                textDecoration: 'underline',
+                cursor: 'pointer',
+                fontSize: 15,
+                fontWeight: 600,
+                marginRight: 16,
+                position: 'absolute',
+                left: 32,
+                bottom: 24
+              }}
+            >
+              Download Text
+            </button>
+            <button
+              onClick={() => setModalOpen(false)}
+              style={{
+                background: '#1976d2',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 6,
+                padding: '10px 28px',
+                fontSize: 16,
+                fontWeight: 700,
+                cursor: 'pointer',
+                position: 'absolute',
+                right: 24,
+                bottom: 24
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
       {(recording) ? (
         <div style={{ display: 'flex', gap: 12, marginTop: 32, justifyContent: 'center' }}>
-          {/* Stop Button */}
           <button
             onClick={() => {
               setRecording(false);
@@ -302,7 +441,6 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
           >
             Stop Recording
           </button>
-          {/* PiP Button */}
           <button
             onClick={() => {
               const event = new Event('sparky-pip-toggle');

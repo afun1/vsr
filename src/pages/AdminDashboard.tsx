@@ -65,9 +65,6 @@ const AdminDashboard: React.FC = () => {
         const { data, error } = await supabase.from('profiles').select('id, email, display_name, role');
         if (!error && data) {
           setUsers(data);
-          console.log('DEBUG: Users fetched from Supabase:', data);
-        } else {
-          console.error('DEBUG: Error fetching users from Supabase:', error);
         }
       };
       fetchUsers();
@@ -102,6 +99,12 @@ const AdminDashboard: React.FC = () => {
   const handleRoleChange = async (userId: string, newRole: string) => {
     await supabase.from('profiles').update({ role: newRole }).eq('id', userId);
     setUsers(users => users.map(u => u.id === userId ? { ...u, role: newRole } : u));
+  };
+
+  const handleDeleteRecording = async (recId: string) => {
+    if (!window.confirm('Delete this recording? This cannot be undone.')) return;
+    await supabase.from('recordings').delete().eq('id', recId);
+    setRecordings(recs => recs.filter(r => r.id !== recId));
   };
 
   const exportCSV = (rows: any[], columns: string[], filename: string) => {
@@ -163,12 +166,7 @@ const AdminDashboard: React.FC = () => {
       String(u.id || '').toLowerCase().includes(search)
     );
   });
-  if (userSearch && users.length > 0) {
-    console.log('User search:', userSearch, 'Users:', users);
-    if (users[0]) {
-      console.log('User object keys:', Object.keys(users[0]), 'User object:', users[0]);
-    }
-  }
+
   const filteredRecordings = recordings.filter(r => {
     if (!recordingSearch) return true;
     const search = recordingSearch.toLowerCase();
@@ -558,7 +556,21 @@ const AdminDashboard: React.FC = () => {
                 ? `${clientObj.first_name} ${clientObj.last_name}`
                 : (clientObj.name || '-');
               const displayName = r.profiles?.display_name || '-';
-              const createdAt = r.created_at ? new Date(r.created_at).toLocaleString() : '-';
+              const createdAtDate = r.created_at ? new Date(r.created_at) : null;
+              const dateStr = createdAtDate
+                ? `${createdAtDate.getFullYear()}-${String(createdAtDate.getMonth() + 1).padStart(2, '0')}-${String(createdAtDate.getDate()).padStart(2, '0')}`
+                : '';
+              let timeStr = '';
+              if (createdAtDate) {
+                let hours = createdAtDate.getHours();
+                const ampm = hours >= 12 ? 'pm' : 'am';
+                let displayHours = hours % 12;
+                if (displayHours === 0) displayHours = 12;
+                const minutes = String(createdAtDate.getMinutes()).padStart(2, '0');
+                const seconds = String(createdAtDate.getSeconds()).padStart(2, '0');
+                timeStr = `${displayHours}-${minutes}-${seconds}${ampm}`;
+              }
+              const createdAt = createdAtDate ? createdAtDate.toLocaleString() : '-';
               return (
                 <tr key={r.id}>
                   <td><input type="checkbox" checked={selectedRecordingIds.includes(r.id)} onChange={e => setSelectedRecordingIds(e.target.checked ? [...selectedRecordingIds, r.id] : selectedRecordingIds.filter(id => id !== r.id))} /></td>
@@ -620,11 +632,14 @@ const AdminDashboard: React.FC = () => {
                                 style={{ color: '#1976d2' }}
                                 onClick={e => {
                                   e.preventDefault();
+                                  const safeClient = clientName.replace(/[^a-zA-Z0-9-_]/g, '');
+                                  const safeDisplay = displayName.replace(/[^a-zA-Z0-9-_]/g, '');
+                                  const filename = `${safeClient}-by-${safeDisplay}-${dateStr}-at-${timeStr}.txt`;
                                   const blob = new Blob([r.transcript], { type: 'text/plain' });
                                   const url = URL.createObjectURL(blob);
                                   const a = document.createElement('a');
                                   a.href = url;
-                                  a.download = `transcript-${r.id}.txt`;
+                                  a.download = filename;
                                   a.click();
                                   URL.revokeObjectURL(url);
                                 }}

@@ -597,7 +597,7 @@ const AdminDashboard: React.FC = () => {
                     {r.transcript
                       ? (() => {
                           let truncated = '';
-                          const lines = r.transcript.split('\n').filter(l => l.trim() !== '');
+                          const lines = r.transcript.split('\n').filter((l: string) => l.trim() !== '');
                           if (lines.length > 1) {
                             truncated = lines.slice(0, 2).join('\n');
                           } else {

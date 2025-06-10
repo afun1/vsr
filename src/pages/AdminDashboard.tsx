@@ -255,6 +255,17 @@ const AdminDashboard: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  const handleBulkDeleteMembers = async () => {
+    if (selectedMemberIds.length === 0) {
+      alert('No members selected for deletion.');
+      return;
+    }
+    if (!window.confirm(`Delete ${selectedMemberIds.length} selected member(s)? This cannot be undone.`)) return;
+    await supabase.from('clients').delete().in('id', selectedMemberIds);
+    setMembers(members => members.filter(m => !selectedMemberIds.includes(m.id)));
+    setSelectedMemberIds([]);
+  };
+
   const userPageCount = Math.max(1, Math.ceil(filteredUsers.length / USERS_PER_PAGE));
   const recordingPageCount = Math.max(1, Math.ceil(filteredRecordings.length / RECORDINGS_PER_PAGE));
   const pagedRecordings = filteredRecordings.slice((recordingPage-1)*RECORDINGS_PER_PAGE, recordingPage*RECORDINGS_PER_PAGE);
@@ -483,6 +494,7 @@ const AdminDashboard: React.FC = () => {
             <button type="submit" style={{ background: 'rgb(25, 118, 210)', color: 'rgb(255, 255, 255)', border: 'none', borderRadius: 4, padding: '7px 18px', fontWeight: 600 }}>Member Lookup</button>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flex: 1 }}>
               <button onClick={() => exportMembersCSV(filteredMembers, ['id','email','name','first_name','last_name','created_at'], 'members.csv')} style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>Export Members CSV</button>
+              <button onClick={handleBulkDeleteMembers} disabled={selectedMemberIds.length === 0} style={{ background: '#e53935', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>Delete Selected</button>
             </div>
           </div>
         </div>

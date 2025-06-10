@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../auth/supabaseClient';
 import Header from '../Header';
 
+const RECORDINGS_PER_PAGE_OPTIONS = [20, 40, 60, 80, 100];
+
 const AdminDashboard: React.FC = () => {
   const { user, role } = useAuth();
   const navigate = useNavigate();
@@ -30,7 +32,7 @@ const AdminDashboard: React.FC = () => {
   const [recordingPage, setRecordingPage] = useState(1);
   const [memberPage, setMemberPage] = useState(1);
   const USERS_PER_PAGE = 10;
-  const RECORDINGS_PER_PAGE = 10;
+  const [recordingsPerPage, setRecordingsPerPage] = useState(RECORDINGS_PER_PAGE_OPTIONS[0]);
   const MEMBERS_PER_PAGE = 10;
 
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
@@ -267,8 +269,8 @@ const AdminDashboard: React.FC = () => {
   };
 
   const userPageCount = Math.max(1, Math.ceil(filteredUsers.length / USERS_PER_PAGE));
-  const recordingPageCount = Math.max(1, Math.ceil(filteredRecordings.length / RECORDINGS_PER_PAGE));
-  const pagedRecordings = filteredRecordings.slice((recordingPage-1)*RECORDINGS_PER_PAGE, recordingPage*RECORDINGS_PER_PAGE);
+  const recordingPageCount = Math.max(1, Math.ceil(filteredRecordings.length / recordingsPerPage));
+  const pagedRecordings = filteredRecordings.slice((recordingPage-1)*recordingsPerPage, recordingPage*recordingsPerPage);
   const memberPageCount = Math.max(1, Math.ceil(filteredMembers.length / MEMBERS_PER_PAGE));
   const pagedMembers = filteredMembers.slice((memberPage-1)*MEMBERS_PER_PAGE, memberPage*MEMBERS_PER_PAGE);
 
@@ -530,13 +532,30 @@ const AdminDashboard: React.FC = () => {
         <hr />
         <h3>Recordings Management</h3>
         <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'space-between' }}>
-          <input
-            type="text"
-            placeholder="Search recordings by URL, transcript, or ID..."
-            value={recordingSearch}
-            onChange={e => setRecordingSearch(e.target.value)}
-            style={{ fontSize: 15, padding: '4px 10px', width: 320 }}
-          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <input
+              type="text"
+              placeholder="Search recordings by URL, transcript, or ID..."
+              value={recordingSearch}
+              onChange={e => setRecordingSearch(e.target.value)}
+              style={{ fontSize: 15, padding: '4px 10px', width: 320 }}
+            />
+            <span style={{ color: '#888', fontSize: 15 }}>
+              Files per page:
+              <select
+                value={recordingsPerPage}
+                onChange={e => {
+                  setRecordingPage(1);
+                  setRecordingsPerPage(Number(e.target.value));
+                }}
+                style={{ marginLeft: 8, fontSize: 15, padding: '2px 8px' }}
+              >
+                {RECORDINGS_PER_PAGE_OPTIONS.map(opt => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </select>
+            </span>
+          </div>
           <div style={{ display: 'flex', gap: 12, marginLeft: 'auto' }}>
             <button onClick={() => exportCSV(filteredRecordings, ['id','video_url','transcript','created_at','client_id','user_id'], 'recordings.csv')} style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>
               Export Recordings CSV

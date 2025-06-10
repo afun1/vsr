@@ -7,67 +7,13 @@ import Header from '../Header';
 const RECORDINGS_PER_PAGE_OPTIONS = [20, 40, 60, 80, 100];
 
 const AdminDashboard: React.FC = () => {
-  const { user, role } = useAuth();
-  const navigate = useNavigate();
-  const [auditLogs, setAuditLogs] = useState<any[]>([]);
-  const [users, setUsers] = useState<any[]>([]);
-  const [userSearch, setUserSearch] = useState('');
+  const { role } = useAuth();
   const [recordings, setRecordings] = useState<any[]>([]);
   const [recordingSearch, setRecordingSearch] = useState('');
-  const [analytics, setAnalytics] = useState<{ userCount: number; adminCount: number; recordingCount: number }>({ userCount: 0, adminCount: 0, recordingCount: 0 });
-
-  const [lookupInput, setLookupInput] = useState('');
-  const [lookupUser, setLookupUser] = useState<any>(null);
-  const [lookupUserChoices, setLookupUserChoices] = useState<any[]>([]);
-  const [lookupRecordings, setLookupRecordings] = useState<any[]>([]);
-  const [lookupLogs, setLookupLogs] = useState<any[]>([]);
-  const [lookupError, setLookupError] = useState<string | null>(null);
-  const [lookupLoading, setLookupLoading] = useState(false);
-
-  const [editingUserId, setEditingUserId] = useState<string | null>(null);
-  const [editDisplayName, setEditDisplayName] = useState('');
-  const [editEmail, setEditEmail] = useState('');
-
-  const [userPage, setUserPage] = useState(1);
   const [recordingPage, setRecordingPage] = useState(1);
-  const [memberPage, setMemberPage] = useState(1);
-  const [usersPerPage, setUsersPerPage] = useState(RECORDINGS_PER_PAGE_OPTIONS[0]);
   const [recordingsPerPage, setRecordingsPerPage] = useState(RECORDINGS_PER_PAGE_OPTIONS[0]);
-  const [membersPerPage, setMembersPerPage] = useState(RECORDINGS_PER_PAGE_OPTIONS[0]);
-
-  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [selectedRecordingIds, setSelectedRecordingIds] = useState<string[]>([]);
-  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
-
-  const [auditLogSearch, setAuditLogSearch] = useState('');
-
-  const [members, setMembers] = useState<any[]>([]);
-  const [memberSearch, setMemberSearch] = useState('');
   const [copiedUrlId, setCopiedUrlId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (role === 'admin') {
-      supabase
-        .from('audit_logs')
-        .select('id, user_id, action, target_type, target_id, details, created_at')
-        .order('created_at', { ascending: false })
-        .then(({ data }) => {
-          if (data) setAuditLogs(data);
-        });
-    }
-  }, [role]);
-
-  useEffect(() => {
-    if (role === 'admin') {
-      const fetchUsers = async () => {
-        const { data, error } = await supabase.from('profiles').select('id, email, display_name, role');
-        if (!error && data) {
-          setUsers(data);
-        }
-      };
-      fetchUsers();
-    }
-  }, [role]);
 
   useEffect(() => {
     if (role === 'admin') {
@@ -78,26 +24,6 @@ const AdminDashboard: React.FC = () => {
       fetchRecordings();
     }
   }, [role]);
-
-  useEffect(() => {
-    if (role === 'admin') {
-      const fetchAnalytics = async () => {
-        const { data: usersData } = await supabase.from('profiles').select('id, role');
-        const { data: recsData } = await supabase.from('recordings').select('id');
-        setAnalytics({
-          userCount: usersData ? usersData.length : 0,
-          adminCount: usersData ? usersData.filter((u: any) => u.role === 'admin').length : 0,
-          recordingCount: recsData ? recsData.length : 0,
-        });
-      };
-      fetchAnalytics();
-    }
-  }, [role]);
-
-  const handleRoleChange = async (userId: string, newRole: string) => {
-    await supabase.from('profiles').update({ role: newRole }).eq('id', userId);
-    setUsers(users => users.map(u => u.id === userId ? { ...u, role: newRole } : u));
-  };
 
   const exportCSV = (rows: any[], columns: string[], filename: string) => {
     const csv = [columns.join(',')].concat(rows.map(r => columns.map(c => JSON.stringify(r[c] ?? '')).join(','))).join('\n');
@@ -110,54 +36,12 @@ const AdminDashboard: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  useEffect(() => {
-    if (!lookupInput.trim()) {
-      setLookupUserChoices([]);
-      setLookupError(null);
-      return;
-    }
-    const timeout = setTimeout(async () => {
-      const input = lookupInput.trim();
-      if (!input) {
-        setLookupUserChoices([]);
-        setLookupError(null);
-        return;
-      }
-      const { data: matches, error } = await supabase
-        .from('profiles')
-        .select('id, email, display_name, role, created_at')
-        .or(`email.ilike.*${input}*,display_name.ilike.*${input}*`);
-      if (!error && matches) {
-        setLookupUserChoices(matches);
-      } else {
-        setLookupUserChoices([]);
-        setLookupError(error ? `Error searching users: ${error.message || error}` : 'Unknown error.');
-      }
-    }, 200);
-    return () => clearTimeout(timeout);
-  }, [lookupInput]);
-
-  const handleSelectLookupUser = async (userProfile: any) => {
-    setLookupUser(userProfile);
-    setLookupUserChoices([]);
-    setLookupLoading(true);
-    const { data: recs } = await supabase.from('recordings').select('*').eq('user_id', userProfile.id).order('created_at', { ascending: false });
-    setLookupRecordings(recs || []);
-    const { data: logs } = await supabase.from('audit_logs').select('*').eq('user_id', userProfile.id).order('created_at', { ascending: false });
-    setLookupLogs(logs || []);
-    setLookupLoading(false);
+  const handleBulkDeleteRecordings = async () => {
+    if (!window.confirm('Delete selected recordings? This cannot be undone.')) return;
+    await supabase.from('recordings').delete().in('id', selectedRecordingIds);
+    setRecordings(recs => recs.filter(r => !selectedRecordingIds.includes(r.id)));
+    setSelectedRecordingIds([]);
   };
-
-  const filteredUsers = users.filter(u => {
-    if (!userSearch) return true;
-    const search = userSearch.trim().toLowerCase();
-    return (
-      String(u.email || '').toLowerCase().includes(search) ||
-      String(u.display_name || '').toLowerCase().includes(search) ||
-      String(u.role || '').toLowerCase().includes(search) ||
-      String(u.id || '').toLowerCase().includes(search)
-    );
-  });
 
   const filteredRecordings = recordings.filter(r => {
     if (!recordingSearch) return true;
@@ -180,95 +64,9 @@ const AdminDashboard: React.FC = () => {
       clientLast.includes(search)
     );
   });
-  const [profileEmails, setProfileEmails] = useState<string[]>([]);
-  useEffect(() => {
-    supabase.from('profiles').select('email').then(({ data }) => {
-      if (data) setProfileEmails(data.map((p: any) => p.email));
-    });
-  }, []);
-  const filteredMembers = members.filter(m =>
-    (!memberSearch || (m.email && m.email.toLowerCase().includes(memberSearch.toLowerCase())) || (m.name && m.name.toLowerCase().includes(memberSearch.toLowerCase()))) &&
-    !profileEmails.includes(m.email)
-  );
 
-  const handleUserActive = async (userId: string, active: boolean) => {
-    await supabase.from('profiles').update({ notifications_enabled: active }).eq('id', userId);
-    setUsers(users => users.map(u => u.id === userId ? { ...u, notifications_enabled: active } : u));
-  };
-
-  const handleSaveUserEdit = async (userId: string) => {
-    const updateFields: any = { email: editEmail };
-    const userObj = users.find(u => u.id === userId);
-    if (userObj && userObj.role === 'admin' && (!editDisplayName || editDisplayName.trim() === '')) {
-      alert('Admin display name cannot be blank.');
-      return;
-    }
-    if (editDisplayName && editDisplayName.trim() !== '') {
-      updateFields.display_name = editDisplayName;
-    }
-    await supabase.from('profiles').update(updateFields).eq('id', userId);
-    setUsers(users => users.map(u => u.id === userId ? { ...u, ...updateFields } : u));
-    setEditingUserId(null);
-  };
-
-  useEffect(() => {
-    supabase.from('clients').select('id, email, name, first_name, last_name, created_at').then(({ data }) => {
-      if (data) setMembers(data);
-    });
-  }, []);
-
-  const handleBulkDeleteUsers = async () => {
-    if (selectedUserIds.length === 0) {
-      alert('No users selected for deletion.');
-      return;
-    }
-    if (selectedUserIds.length === users.length) {
-      alert('Bulk delete of ALL users is not allowed. Please deselect at least one user.');
-      return;
-    }
-    if (!window.confirm(`Delete ${selectedUserIds.length} selected user(s)? This cannot be undone.`)) return;
-    await supabase.from('profiles').delete().in('id', selectedUserIds);
-    setUsers(users => users.filter(u => !selectedUserIds.includes(u.id)));
-    setSelectedUserIds([]);
-  };
-  const handleBulkPromoteUsers = async () => {
-    await supabase.from('profiles').update({ role: 'admin' }).in('id', selectedUserIds);
-    setUsers(users => users.map(u => selectedUserIds.includes(u.id) ? { ...u, role: 'admin' } : u));
-    setSelectedUserIds([]);
-  };
-  const handleBulkDeleteRecordings = async () => {
-    if (!window.confirm('Delete selected recordings? This cannot be undone.')) return;
-    await supabase.from('recordings').delete().in('id', selectedRecordingIds);
-    setRecordings(recs => recs.filter(r => !selectedRecordingIds.includes(r.id)));
-    setSelectedRecordingIds([]);
-  };
-  const exportMembersCSV = (rows: any[], columns: string[], filename: string) => {
-    const csv = [columns.join(',')].concat(rows.map(r => columns.map(c => JSON.stringify(r[c] ?? '')).join(','))).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleBulkDeleteMembers = async () => {
-    if (selectedMemberIds.length === 0) {
-      alert('No members selected for deletion.');
-      return;
-    }
-    if (!window.confirm(`Delete ${selectedMemberIds.length} selected member(s)? This cannot be undone.`)) return;
-    await supabase.from('clients').delete().in('id', selectedMemberIds);
-    setMembers(members => members.filter(m => !selectedMemberIds.includes(m.id)));
-    setSelectedMemberIds([]);
-  };
-
-  const userPageCount = Math.max(1, Math.ceil(filteredUsers.length / usersPerPage));
   const recordingPageCount = Math.max(1, Math.ceil(filteredRecordings.length / recordingsPerPage));
   const pagedRecordings = filteredRecordings.slice((recordingPage-1)*recordingsPerPage, recordingPage*recordingsPerPage);
-  const memberPageCount = Math.max(1, Math.ceil(filteredMembers.length / membersPerPage));
-  const pagedMembers = filteredMembers.slice((memberPage-1)*membersPerPage, memberPage*membersPerPage);
 
   return (
     <>

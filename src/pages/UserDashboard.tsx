@@ -13,13 +13,6 @@ const UserDashboard: React.FC = () => {
   const liveVideoRef = useRef<HTMLVideoElement | null>(null);
   const pipVideoRef = useRef<HTMLVideoElement | null>(null);
   const [displayName, setDisplayName] = useState<string>('');
-  const [recordings, setRecordings] = useState<any[]>([]);
-  const [copiedUrlId, setCopiedUrlId] = useState<string | null>(null);
-  const [transcribingId, setTranscribingId] = useState<string | null>(null);
-
-  // Debug logs
-  console.log('USER:', user);
-  console.log('RECORDINGS ARRAY:', recordings);
 
   useEffect(() => {
     if (liveVideoRef.current && liveStream) {
@@ -31,6 +24,7 @@ const UserDashboard: React.FC = () => {
     }
   }, [liveStream, recording]);
 
+  // Listen for stop event from header
   useEffect(() => {
     const stopHandler = () => {
       setRecording(false);
@@ -45,33 +39,24 @@ const UserDashboard: React.FC = () => {
     const fetchDisplayName = async () => {
       const { data: userData } = await supabase.auth.getUser();
       const userId = userData?.user?.id;
+      console.log('[UserDashboard] userId:', userId);
       if (!userId) return;
-      const { data } = await supabase.from('profiles').select('display_name').eq('id', userId).single();
+      const { data, error } = await supabase.from('profiles').select('display_name').eq('id', userId).single();
+      console.log('[UserDashboard] profile fetch result:', data, 'error:', error);
       setDisplayName(data?.display_name || '');
     };
     fetchDisplayName();
   }, [user]);
 
-  // Fetch user's recordings
-  useEffect(() => {
-    const fetchRecordings = async () => {
-      const { data } = await supabase
-        .from('recordings')
-        .select('id, video_url, transcript, created_at')
-        .eq('user_id', user?.id)
-        .order('created_at', { ascending: false });
-      if (data) setRecordings(data);
-    };
-    if (user?.id) fetchRecordings();
-  }, [user, transcribingId]);
-
+  // Handler to start recording and show the live screen in workspace
   const handleStartLiveScreen = (stream: MediaStream) => {
     setLiveStream(stream);
     setRecording(true);
-    setRecordedVideoUrl(null);
+    setRecordedVideoUrl(null); // Clear preview when starting a new recording
     window.dispatchEvent(new CustomEvent('sparky-recording-visibility', { detail: true }));
   };
 
+  // --- PiP support: hidden video for PiP ---
   useEffect(() => {
     const pipHandler = () => {
       if (document.pictureInPictureElement) {
@@ -93,34 +78,15 @@ const UserDashboard: React.FC = () => {
     }
   }, [liveStream, recording]);
 
+  // Handler to set the recorded video URL and auto-select the new recording in ScreenRecorder
   const handleSetRecordedVideoUrl = (url: string | null) => {
+    console.log('setRecordedVideoUrl called with:', url);
     setRecordedVideoUrl(url);
+    // Dispatch a custom event to ScreenRecorder to auto-select the new recording
     if (url) {
       window.dispatchEvent(new CustomEvent('sparky-auto-select-recording', { detail: url }));
     }
   };
-
-  async function transcribeRecording(id: string) {
-    setTranscribingId(id);
-    await fetch('/api/transcribe', {
-      method: 'POST',
-      body: JSON.stringify({ id }),
-      headers: { 'Content-Type': 'application/json' }
-    });
-    alert('Transcription started!');
-    setTimeout(() => setTranscribingId(null), 2000);
-  }
-
-  // Helper to truncate transcript for preview
-  function truncate(text: string, max: number) {
-    if (!text) return '';
-    return text.length > max ? text.slice(0, max) + '…' : text;
-  }
-
-  // Show Transcribe button if transcript is missing, empty, or "Empty"
-  function shouldShowTranscribeButton(transcript: string | null | undefined) {
-    return !transcript || transcript.trim() === '' || transcript === 'Empty';
-  }
 
   return (
     <>
@@ -137,84 +103,15 @@ const UserDashboard: React.FC = () => {
       )}
       <main style={{ width: '100%', maxWidth: 1200, margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', padding: 32, position: 'relative', minHeight: '100vh', background: '#f7f8fa', fontSize: 12 }}>
         <div style={{ height: 64 }} /> {/* Spacer for header */}
-        <h2 style={{ margin: 0, fontSize: 32, textAlign: 'center', fontWeight: 700, marginBottom: 32 }}>
-          Recording Dashboard
-        </h2>
-        <RecordingPanel setRecordedVideoUrl={handleSetRecordedVideoUrl} onStartLiveScreen={handleStartLiveScreen} />
-        <ScreenRecorder recordedVideoUrl={recordedVideoUrl} />
-
-        {/* User's Recordings Cards */}
-        {recordings.length === 0 ? (
-          <div style={{ textAlign: 'center', color: '#888', padding: 16 }}>No recordings found.</div>
-        ) : (
-          recordings.map(r => {
-            // Debug: show the full recording object on the card
-            return (
-              <div key={r.id} style={{ background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px #0001', marginBottom: 24, padding: 20, width: '100%', maxWidth: 700 }}>
-                <pre style={{ background: '#eee', fontSize: 12, padding: 8, borderRadius: 4, marginBottom: 8 }}>
-                  {JSON.stringify(r, null, 2)}
-                </pre>
-                <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 8 }}>
-                  {r.created_at ? new Date(r.created_at).toLocaleString() : '-'}
-                </div>
-                <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-                  {r.video_url && (
-                    <>
-                      <button
-                        onClick={() => window.open(r.video_url, '_blank')}
-                        style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}
-                      >
-                        Play
-                      </button>
-                      <button
-                        onClick={async (e) => {
-                          e.preventDefault();
-                          await navigator.clipboard.writeText(r.video_url);
-                          setCopiedUrlId(r.id);
-                          setTimeout(() => setCopiedUrlId(null), 1200);
-                        }}
-                        style={{ color: '#1976d2', background: 'none', border: 'none', textDecoration: 'underline', fontSize: 14, cursor: 'pointer', position: 'relative' }}
-                      >
-                        {copiedUrlId === r.id ? 'Copied!' : 'Get URL'}
-                      </button>
-                      <a
-                        href={r.video_url}
-                        download
-                        style={{ background: '#888', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600, textDecoration: 'none' }}
-                      >
-                        Download
-                      </a>
-                    </>
-                  )}
-                </div>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                  {shouldShowTranscribeButton(r.transcript) ? (
-                    <button
-                      onClick={async () => await transcribeRecording(r.id)}
-                      style={{
-                        background: '#28a745',
-                        color: '#fff',
-                        border: 'none',
-                        borderRadius: 4,
-                        padding: '6px 14px',
-                        fontWeight: 600,
-                        minWidth: 120,
-                        transition: 'background 0.2s'
-                      }}
-                      disabled={transcribingId === r.id}
-                    >
-                      {transcribingId === r.id ? 'Transcribing...' : 'Transcribe'}
-                    </button>
-                  ) : (
-                    <span style={{ color: '#444', fontSize: 14, background: '#f5f5f5', borderRadius: 4, padding: '4px 10px', maxWidth: 350, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {truncate(r.transcript, 60)}
-                    </span>
-                  )}
-                </div>
-              </div>
-            );
-          })
+        <h2 style={{ margin: 0, fontSize: 32, textAlign: 'center', fontWeight: 700, marginBottom: 32 }}>User Dashboard</h2>
+        {displayName && (
+          <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 16 }}>Welcome, {displayName}!</div>
         )}
+        {/* New Recording Panel (always visible) */}
+        <RecordingPanel setRecordedVideoUrl={handleSetRecordedVideoUrl} onStartLiveScreen={handleStartLiveScreen} />
+        {/* Recording Preview and List */}
+        <ScreenRecorder recordedVideoUrl={recordedVideoUrl} />
+        {/* Remove local preview video here to avoid double preview and confusion */}
       </main>
     </>
   );

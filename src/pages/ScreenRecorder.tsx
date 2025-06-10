@@ -17,24 +17,7 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
   const [recording, setRecording] = useState(false);
   const [search, setSearch] = useState('');
 
-  // --- Manual Transcribe Handler ---
-  const handleManualTranscribe = async (recordingId: string) => {
-    try {
-      const { data, error } = await supabase.functions.invoke('trigger_github_transcribe', {
-        body: { recording_id: recordingId }
-      });
-      if (error) {
-        alert('Failed to trigger transcription: ' + error.message);
-      } else {
-        alert('Transcription triggered successfully!');
-      }
-    } catch (err: any) {
-      alert('Failed to trigger transcription: ' + (err.message || err));
-    }
-  };
-
   useEffect(() => {
-    if (!user) { setRecordings([]); setLoading(false); return; }
     const fetchRecordings = async () => {
       setLoading(true);
       // Get the user's id from Supabase
@@ -44,8 +27,8 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
       let query = supabase
         .from('recordings')
         .select('id, user_id, video_url, created_at, client_id, clients:client_id (name, email, first_name, last_name), profiles:user_id (display_name, email)')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false }); // Only current user's recordings
+        .order('created_at', { ascending: false })
+        .eq('user_id', userId); // Only current user's recordings
       const { data, error } = await query;
       if (error) {
         setLoading(false);
@@ -53,7 +36,7 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
       setLoading(false);
       // Auto-select and preview the latest recording if a new one was just added
       if (data && data.length > 0 && recordedVideoUrl) {
-        const found = data.find((r: any) => r.video_url === recordedVideoUrl);
+        const found = data.find(r => r.video_url === recordedVideoUrl);
         if (found) setSelectedRecording(found);
       }
     };
@@ -66,7 +49,7 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
       const url = e.detail;
       if (!url) return;
       // Try to find the recording with this video_url
-      const found = recordings.find((r: any) => r.video_url === url);
+      const found = recordings.find(r => r.video_url === url);
       if (found) setSelectedRecording(found);
     };
     window.addEventListener('sparky-auto-select-recording', handler);
@@ -76,7 +59,7 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
   // Auto-select and preview the new recording if recordedVideoUrl changes
   useEffect(() => {
     if (recordedVideoUrl && recordings.length > 0) {
-      const found = recordings.find((r: any) => r.video_url === recordedVideoUrl);
+      const found = recordings.find(r => r.video_url === recordedVideoUrl);
       if (found) setSelectedRecording(found);
     }
   }, [recordedVideoUrl, recordings]);
@@ -91,13 +74,13 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
       if (!userId) { setRecordings([]); setLoading(false); return; }
       let query = supabase
         .from('recordings')
-        .select('id, user_id, video_url, created_at, client_id, clients:client_id (name, email, first_name, last_name), profiles:user_id (display_name, email)') // removed joined selects
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
+        .select('id, user_id, video_url, created_at, client_id, clients:client_id (name, email, first_name, last_name), profiles:user_id (display_name, email)')
+        .order('created_at', { ascending: false })
+        .eq('user_id', userId);
       const { data, error } = await query;
       if (!error && data) {
         setRecordings(data);
-        const found = data.find((r: any) => r.video_url === recordedVideoUrl);
+        const found = data.find(r => r.video_url === recordedVideoUrl);
         if (found) setSelectedRecording(found);
       }
       setLoading(false);
@@ -300,31 +283,6 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
                       style={{ width: 40, height: 40, borderRadius: '50%', background: '#ff9800', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px #ff980022', color: '#fff', fontWeight: 700, fontSize: 16, cursor: 'pointer' }}
                     >
                       URL
-                    </button>
-                    {/* Manual Transcribe Button */}
-                    <button
-                      title="Manual Transcribe"
-                      onClick={async e => {
-                        e.stopPropagation();
-                        await handleManualTranscribe(rec.id);
-                      }}
-                      style={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: '50%',
-                        background: '#9c27b0',
-                        border: 'none',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        boxShadow: '0 2px 8px #9c27b022',
-                        color: '#fff',
-                        fontWeight: 700,
-                        fontSize: 16,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <span role="img" aria-label="Transcribe">📝</span>
                     </button>
                   </div>
                 </div>

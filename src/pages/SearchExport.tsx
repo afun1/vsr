@@ -5,6 +5,7 @@ import jsPDF from 'jspdf';
 import Header from '../Header';
 // @ts-ignore
 import FileSaver from 'file-saver';
+import { useAuth } from '../auth/AuthContext';
 
 type ColumnConfig = {
   id: string;
@@ -158,6 +159,8 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
 }
 
 const SearchExport: React.FC = () => {
+  const { user, role } = useAuth();
+
   const [search, setSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -180,7 +183,8 @@ const SearchExport: React.FC = () => {
     supabase.from('clients').select('id, name, email').then(({ data }) => {
       if (data) setAllClients(data);
     });
-    fetchRecordings();
+    // fetchRecordings(); // REMOVE this line to avoid fetching before role is loaded
+    // eslint-disable-next-line
   }, []);
 
   const fetchRecordings = async () => {
@@ -189,6 +193,12 @@ const SearchExport: React.FC = () => {
       .from('recordings')
       .select(`id, video_url, transcript, created_at, client_id, user_id, clients:client_id (name, first_name, last_name, email, sparky_username, phone), profiles:user_id (display_name, email)`)
       .order('created_at', { ascending: sortOrder === 'asc' });
+
+    // Only admins see all, users see their own
+    if (role !== 'admin' && user) {
+      query = query.eq('user_id', user);
+    }
+
     if (clientFilter) query = query.eq('client_id', clientFilter);
     if (dateFrom) query = query.gte('created_at', dateFrom);
     if (dateTo) query = query.lte('created_at', dateTo + 'T23:59:59');
@@ -200,7 +210,12 @@ const SearchExport: React.FC = () => {
     setLoading(false);
   };
 
-  useEffect(() => { fetchRecordings(); }, [clientFilter, dateFrom, dateTo, sortOrder]);
+  useEffect(() => {
+    if (role !== null) {
+      fetchRecordings();
+    }
+  }, [clientFilter, dateFrom, dateTo, sortOrder, user, role]);
+
   useEffect(() => {
     if (!search.trim()) {
       setFilteredRecordings(allRecordings);
@@ -407,9 +422,28 @@ const SearchExport: React.FC = () => {
             </div>
             <table style={{ width: '100%', fontSize: 14, borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ background: '#f8f8f8' }}>
+                <tr style={{
+                  background: '#f8f8f8',
+                  position: 'sticky',
+                  top: 0,
+                  zIndex: 2
+                }}>
                   {visibleColumns.length === 0 ? <th>No columns selected</th> : visibleColumns.map(col => (
-                    <th key={col.id} style={{ border: '1px solid #ddd', padding: '8px', ...(col.id === 'sparky' ? { width: 160 } : {}), ...(col.id === 'transcript' ? { maxWidth: 180 } : {}) }}>{col.label}</th>
+                    <th
+                      key={col.id}
+                      style={{
+                        border: '1px solid #ddd',
+                        padding: '8px',
+                        background: '#f8f8f8',
+                        ...(col.id === 'sparky' ? { width: 160 } : {}),
+                        ...(col.id === 'transcript' ? { maxWidth: 180 } : {}),
+                        position: 'sticky',
+                        top: 0,
+                        zIndex: 2
+                      }}
+                    >
+                      {col.label}
+                    </th>
                   ))}
                 </tr>
               </thead>

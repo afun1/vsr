@@ -5,11 +5,11 @@ import { supabase } from './supabaseClient';
 // Types for user and roles
 export type UserRole = 'user' | 'admin' | null;
 export interface AuthContextType {
-  user: string | null;
+  user: string | null; // Now stores the user's UUID (id)
   role: UserRole;
   login: (username: string, role: UserRole, password?: string, displayName?: string) => Promise<void>;
   logout: () => void;
-  promoteToAdmin: (targetUser: string) => void; // Added promoteToAdmin
+  promoteToAdmin: (targetUser: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -24,8 +24,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const session = supabase.auth.getSession();
     session.then(({ data }) => {
       if (data.session) {
-        setUser(data.session.user.email || data.session.user.id);
-        // Fetch user role from Supabase (stub: default to 'user')
+        setUser(data.session.user.id); // Store UUID only
         fetchUserRole(data.session.user.id);
       }
       setLoading(false);
@@ -33,7 +32,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // Listen for auth changes
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
-        setUser(session.user.email || session.user.id);
+        setUser(session.user.id); // Store UUID only
         fetchUserRole(session.user.id);
       } else {
         setUser(null);
@@ -47,7 +46,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   // Fetch user role from Supabase
   const fetchUserRole = async (_userId: string) => {
-    // Always await getUser and use the id directly
     const { data: userData } = await supabase.auth.getUser();
     const userId = userData?.user?.id;
     if (!userId) {
@@ -108,8 +106,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
       // If profile exists and display_name is set, do NOT update display_name here.
       fetchUserRole(userData.user.id);
+      setUser(userData.user.id); // Store UUID only
     }
-    setUser(email);
   };
 
   const logout = async () => {

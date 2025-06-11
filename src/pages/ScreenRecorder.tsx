@@ -101,16 +101,7 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
     fetchAndSelect();
   }, [recordedVideoUrl]);
 
-  const liveVideoRef = useRef<HTMLVideoElement | null>(null);
-  useEffect(() => {
-    const pipHandler = () => {
-      if (liveVideoRef.current && document.pictureInPictureEnabled) {
-        liveVideoRef.current.requestPictureInPicture().catch(() => {});
-      }
-    };
-    window.addEventListener('sparky-pip-toggle', pipHandler);
-    return () => window.removeEventListener('sparky-pip-toggle', pipHandler);
-  }, []);
+  // PiP logic removed
 
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -441,15 +432,7 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
           >
             Stop Recording
           </button>
-          <button
-            onClick={() => {
-              const event = new Event('sparky-pip-toggle');
-              window.dispatchEvent(event);
-            }}
-            style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 6, padding: '12px 28px', fontSize: 18, fontWeight: 700, cursor: 'pointer', boxShadow: '0 2px 8px #1976d222' }}
-          >
-            PiP
-          </button>
+          {/* PiP button removed */}
         </div>
       ) : null}
     </div>

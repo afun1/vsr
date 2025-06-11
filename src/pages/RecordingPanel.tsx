@@ -7,7 +7,7 @@ interface RecordingPanelProps {
   onStartLiveScreen: (stream: MediaStream) => void;
 }
 
-const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, onStartLiveScreen }: RecordingPanelProps) => {
+const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, onStartLiveScreen }) => {
   const [micGain, setMicGain] = useState(() => {
     const stored = localStorage.getItem('micGain');
     return stored ? Number(stored) : 1;
@@ -139,6 +139,26 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
       liveVideoRef.current.srcObject = null;
     }
   }, [liveStream, recording, selectedOutput, outputs]);
+
+  useEffect(() => {
+    console.log('[RecordingPanel] mounted');
+    return () => {
+      console.log('[RecordingPanel] unmounted');
+    };
+  }, []);
+
+  const handlePauseResume = () => {
+    if (!mediaRecorderRef.current) return;
+    if (mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.pause();
+      setIsPaused(true);
+    } else if (mediaRecorderRef.current.state === 'paused') {
+      mediaRecorderRef.current.resume();
+      setIsPaused(false);
+    }
+  };
+
+  // --- Add back the missing handlers ---
 
   const handleStartRecording = async () => {
     setRecordingError(null);
@@ -311,49 +331,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
     }
   };
 
-  useEffect(() => { localStorage.setItem('micGain', String(micGain)); }, [micGain]);
-  useEffect(() => { localStorage.setItem('systemGain', String(systemGain)); }, [systemGain]);
-  useEffect(() => { localStorage.setItem('selectedMic', selectedMic); }, [selectedMic]);
-  useEffect(() => { localStorage.setItem('selectedOutput', selectedOutput); }, [selectedOutput]);
-  useEffect(() => { if (clientId) { localStorage.setItem('lastMemberId', clientId); } }, [clientId]);
-
-  const pipVideoRef = useRef<HTMLVideoElement | null>(null);
-  useEffect(() => {
-    const pipHandler = () => {
-      if (pipVideoRef.current && document.pictureInPictureEnabled) {
-        pipVideoRef.current.requestPictureInPicture().catch(() => {});
-      }
-    };
-    window.addEventListener('sparky-pip-toggle', pipHandler);
-    return () => window.removeEventListener('sparky-pip-toggle', pipHandler);
-  }, []);
-  useEffect(() => {
-    if (pipVideoRef.current && liveStream && recording) {
-      pipVideoRef.current.srcObject = liveStream;
-      pipVideoRef.current.play().catch(() => {});
-    }
-    if ((!recording || !liveStream) && pipVideoRef.current) {
-      pipVideoRef.current.srcObject = null;
-    }
-  }, [liveStream, recording]);
-
-  useEffect(() => {
-    console.log('[RecordingPanel] mounted');
-    return () => {
-      console.log('[RecordingPanel] unmounted');
-    };
-  }, []);
-
-  const handlePauseResume = () => {
-    if (!mediaRecorderRef.current) return;
-    if (mediaRecorderRef.current.state === 'recording') {
-      mediaRecorderRef.current.pause();
-      setIsPaused(true);
-    } else if (mediaRecorderRef.current.state === 'paused') {
-      mediaRecorderRef.current.resume();
-      setIsPaused(false);
-    }
-  };
+  // --- End missing handlers ---
 
   return (
     <div style={{ width: 480, background: '#fff', borderRadius: 10, boxShadow: '0 2px 12px #0001', padding: 24, marginBottom: 32 }}>
@@ -604,15 +582,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
           </>
         )}
       </div>
-      {recording && liveStream && (
-        <video
-          ref={pipVideoRef}
-          style={{ display: 'none' }}
-          autoPlay
-          playsInline
-          muted
-        />
-      )}
       {recordingError && (
         <div style={{ color: 'red', fontWeight: 600, margin: '12px 0' }}>{recordingError}</div>
       )}

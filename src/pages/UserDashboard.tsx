@@ -11,7 +11,7 @@ const UserDashboard: React.FC = () => {
   const [recording, setRecording] = useState(false);
   const [liveStream, setLiveStream] = useState<MediaStream | null>(null);
   const liveVideoRef = useRef<HTMLVideoElement | null>(null);
-  const pipVideoRef = useRef<HTMLVideoElement | null>(null);
+  // Removed pipVideoRef and all PiP logic
 
   useEffect(() => {
     if (liveVideoRef.current && liveStream) {
@@ -50,26 +50,7 @@ const UserDashboard: React.FC = () => {
     window.dispatchEvent(new CustomEvent('sparky-recording-visibility', { detail: true }));
   };
 
-  useEffect(() => {
-    const pipHandler = () => {
-      if (document.pictureInPictureElement) {
-        document.exitPictureInPicture().catch(() => {});
-      } else if (pipVideoRef.current && document.pictureInPictureEnabled) {
-        pipVideoRef.current.requestPictureInPicture().catch(() => {});
-      }
-    };
-    window.addEventListener('sparky-pip-toggle', pipHandler);
-    return () => window.removeEventListener('sparky-pip-toggle', pipHandler);
-  }, []);
-  useEffect(() => {
-    if (pipVideoRef.current && liveStream && recording) {
-      pipVideoRef.current.srcObject = liveStream;
-      pipVideoRef.current.play().catch(() => {});
-    }
-    if ((!recording || !liveStream) && pipVideoRef.current) {
-      pipVideoRef.current.srcObject = null;
-    }
-  }, [liveStream, recording]);
+  // Removed PiP event handler and pipVideoRef effect
 
   const handleSetRecordedVideoUrl = (url: string | null) => {
     setRecordedVideoUrl(url);
@@ -81,15 +62,7 @@ const UserDashboard: React.FC = () => {
   return (
     <>
       <Header />
-      {recording && liveStream && (
-        <video
-          ref={pipVideoRef}
-          style={{ display: 'none' }}
-          autoPlay
-          playsInline
-          muted
-        />
-      )}
+      {/* PiP video element removed */}
       <main style={{ width: '100%', maxWidth: 1200, margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', padding: 32, position: 'relative', minHeight: '100vh', background: '#f7f8fa', fontSize: 12 }}>
         <div style={{ height: 64 }} />
         <h2 style={{ margin: 0, fontSize: 32, textAlign: 'center', fontWeight: 700, marginBottom: 32 }}>Recording Dashboard</h2>

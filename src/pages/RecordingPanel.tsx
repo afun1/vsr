@@ -8,14 +8,7 @@ interface RecordingPanelProps {
 }
 
 const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, onStartLiveScreen }) => {
-  const [micGain, setMicGain] = useState(() => {
-    const stored = localStorage.getItem('micGain');
-    return stored ? Number(stored) : 1;
-  });
-  const [systemGain, setSystemGain] = useState(() => {
-    const stored = localStorage.getItem('systemGain');
-    return stored ? Number(stored) : 1;
-  });
+  // Removed unused micGain and systemGain state
   const [memberMode, setMemberMode] = useState<'existing' | 'new'>('existing');
   const [search, setSearch] = useState('');
   const [clientId, setClientId] = useState<string | null>(() => localStorage.getItem('lastMemberId') || null);

@@ -8,7 +8,6 @@ interface RecordingPanelProps {
 }
 
 const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, onStartLiveScreen }) => {
-  // Removed unused micGain and systemGain state
   const [memberMode, setMemberMode] = useState<'existing' | 'new'>('existing');
   const [search, setSearch] = useState('');
   const [clientId, setClientId] = useState<string | null>(() => localStorage.getItem('lastMemberId') || null);
@@ -34,6 +33,14 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
   const [stoppedRecordingBlob, setStoppedRecordingBlob] = useState<Blob | null>(null);
   const [stoppedRecordingUrl, setStoppedRecordingUrl] = useState<string | null>(null);
   const [isPaused, setIsPaused] = useState(false);
+
+  // Remember audio settings on change
+  useEffect(() => {
+    localStorage.setItem('selectedMic', selectedMic);
+  }, [selectedMic]);
+  useEffect(() => {
+    localStorage.setItem('selectedOutput', selectedOutput);
+  }, [selectedOutput]);
 
   useEffect(() => {
     if (memberMode === 'new') {
@@ -151,8 +158,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
     }
   };
 
-  // --- Add back the missing handlers ---
-
   const handleStartRecording = async () => {
     setRecordingError(null);
     setStoppedRecordingUrl(null);
@@ -255,21 +260,34 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         return;
       }
     } else {
-      if (!newFirstName.trim() || !newLastName.trim() || !newEmail.trim() || !newUsername.trim() || !newPhone.trim()) {
-        setNewMemberError('All fields are required.');
+      // Only require first name, last name, and username
+      if (!newFirstName.trim() || !newLastName.trim() || !newUsername.trim()) {
+        setNewMemberError('First name, last name, and username are required.');
         return;
       }
       setNewMemberError(null);
       setNewMemberLoading(true);
       try {
-        const { data, error } = await supabase.from('clients').insert({
+        // Only include email if not blank
+        const insertData: any = {
           name: `${newFirstName.trim()} ${newLastName.trim()}`,
-          email: newEmail.trim(),
           sparky_username: newUsername.trim(),
           phone: newPhone.trim(),
-        }).select('id').single();
+        };
+        if (newEmail.trim() !== '') {
+          insertData.email = newEmail.trim();
+        }
+        const { data, error } = await supabase.from('clients').insert(insertData).select('id').single();
         if (error) {
-          setNewMemberError('Failed to create new member: ' + error.message);
+          if (
+            error.message &&
+            error.message.includes('duplicate key value') &&
+            error.message.includes('unique_client_email')
+          ) {
+            setNewMemberError('A member with this email already exists. Please use a different email or select the existing member.');
+          } else {
+            setNewMemberError('Failed to create new member: ' + error.message);
+          }
           setNewMemberLoading(false);
           return;
         }
@@ -324,8 +342,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
     }
   };
 
-  // --- End missing handlers ---
-
   return (
     <div style={{ width: 480, background: '#fff', borderRadius: 10, boxShadow: '0 2px 12px #0001', padding: 24, marginBottom: 32 }}>
       <h3>New Recording</h3>
@@ -361,7 +377,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
           ))}
         </select>
       </div>
-      {/* Sliders removed */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 32 }}>
         {recording && liveStream ? (
           <>
@@ -531,8 +546,30 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
               )}
               <button
                 onClick={handleSaveRecordingDetails}
-                disabled={memberMode === 'existing' ? !clientId : newMemberLoading || !newFirstName.trim() || !newLastName.trim() || !newEmail.trim() || !newUsername.trim() || !newPhone.trim()}
-                style={{ background: '#28a745', color: '#fff', fontWeight: 700, border: 'none', borderRadius: 6, padding: '12px 28px', fontSize: 18, cursor: (memberMode === 'existing' ? !clientId : newMemberLoading || !newFirstName.trim() || !newLastName.trim() || !newEmail.trim() || !newUsername.trim() || !newPhone.trim()) ? 'not-allowed' : 'pointer', boxShadow: '0 2px 8px #28a74522', marginTop: 12 }}
+                disabled={
+                  memberMode === 'existing'
+                    ? !clientId
+                    : newMemberLoading || !newFirstName.trim() || !newLastName.trim() || !newUsername.trim()
+                }
+                style={{
+                  background: '#28a745',
+                  color: '#fff',
+                  fontWeight: 700,
+                  border: 'none',
+                  borderRadius: 6,
+                  padding: '12px 28px',
+                  fontSize: 18,
+                  cursor:
+                    memberMode === 'existing'
+                      ? !clientId
+                        ? 'not-allowed'
+                        : 'pointer'
+                      : newMemberLoading || !newFirstName.trim() || !newLastName.trim() || !newUsername.trim()
+                      ? 'not-allowed'
+                      : 'pointer',
+                  boxShadow: '0 2px 8px #28a74522',
+                  marginTop: 12,
+                }}
               >
                 Save Details
               </button>

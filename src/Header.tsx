@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from './auth/supabaseClient';
 import { useAuth } from './auth/AuthContext';
+import { Link } from 'react-router-dom';
 
 const Header: React.FC = () => {
   const { user, role } = useAuth();
@@ -192,6 +193,11 @@ const Header: React.FC = () => {
           </a>
           <a href="/search-export" style={{ color: '#1976d2', fontWeight: 600, fontSize: 16, textDecoration: 'none', marginRight: 8 }}>Search</a>
           <a href="/search-export" style={{ color: '#1976d2', fontWeight: 600, fontSize: 16, textDecoration: 'none', marginRight: 8 }}>Export</a>
+          {role === 'admin' && (
+            <Link to="/recordings-management" style={{ color: '#1976d2', fontWeight: 600, fontSize: 16, textDecoration: 'none', marginRight: 8 }}>
+              Recordings
+            </Link>
+          )}
           <button
             onClick={() => { if (window.confirm('Log out?')) { localStorage.clear(); window.location.href = '/login'; } }}
             style={{ background: 'none', border: 'none', color: '#e53935', fontWeight: 700, fontSize: 16, cursor: 'pointer', marginLeft: 8, marginRight: 20 }}

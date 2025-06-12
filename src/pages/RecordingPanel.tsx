@@ -368,32 +368,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
           ))}
         </select>
       </div>
-      <div style={{ marginTop: 16 }}>
-        <label style={{ fontWeight: 600 }}>Microphone Gain:</label>
-        <input
-          type="range"
-          min={0}
-          max={2}
-          step={0.1}
-          value={micGain}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMicGain(Number(e.target.value))}
-          style={{ marginLeft: 10, width: 200 }}
-        />
-        <span style={{ marginLeft: 8, fontSize: 14 }}>{Math.round(micGain * 100)}%</span>
-      </div>
-      <div>
-        <label style={{ fontWeight: 600 }}>System Audio Gain:</label>
-        <input
-          type="range"
-          min={0}
-          max={2}
-          step={0.1}
-          value={systemGain}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSystemGain(Number(e.target.value))}
-          style={{ marginLeft: 10, width: 200 }}
-        />
-        <span style={{ marginLeft: 8, fontSize: 14 }}>{Math.round(systemGain * 100)}%</span>
-      </div>
+      {/* Sliders removed */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 32 }}>
         {recording && liveStream ? (
           <>

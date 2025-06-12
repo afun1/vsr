@@ -9,18 +9,29 @@ import SearchExport from './pages/SearchExport';
 import ScreenRecorder from './pages/ScreenRecorder';
 import TechPage from './pages/Tech';
 import ResetPassword from './pages/ResetPassword';
+import RecordingsManagement from './pages/RecordingsManagement';
 
 const ProtectedRoute: React.FC<{ role: 'user' | 'admin'; children: React.ReactNode }> = ({ role, children }) => {
-  const { user, role: userRole } = useAuth();
+  const { user, role: userRole, loading } = useAuth();
+  if (loading) return null;
   if (!user) return <Navigate to="/login" replace />;
   if (userRole !== role) return <Navigate to={userRole === 'admin' ? '/admin' : '/user'} replace />;
   return <>{children}</>;
 };
 
 const DashboardProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, role: userRole } = useAuth();
+  const { user, role: userRole, loading } = useAuth();
+  if (loading) return null;
   if (!user) return <Navigate to="/login" replace />;
   if (userRole !== 'user' && userRole !== 'admin') return <Navigate to="/login" replace />;
+  return <>{children}</>;
+};
+
+const AdminOnlyRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, role: userRole, loading } = useAuth();
+  if (loading) return null;
+  if (!user) return <Navigate to="/login" replace />;
+  if (userRole !== 'admin') return <Navigate to="/login" replace />;
   return <>{children}</>;
 };
 
@@ -56,6 +67,14 @@ const AppRoutes = () => (
     <Route path="/recorder" element={<ScreenRecorder />} />
     <Route path="/Tech" element={<TechPage />} />
     <Route path="/reset-password" element={<ResetPassword />} />
+    <Route
+      path="/recordings-management"
+      element={
+        <AdminOnlyRoute>
+          <RecordingsManagement />
+        </AdminOnlyRoute>
+      }
+    />
     <Route path="*" element={<Navigate to="/login" replace />} />
   </Routes>
 );

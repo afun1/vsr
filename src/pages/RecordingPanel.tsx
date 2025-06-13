@@ -5,9 +5,12 @@ import { supabase } from '../auth/supabaseClient';
 // --- Dark mode hook ---
 const useDarkMode = () => {
   const [dark, setDark] = useState(() =>
-    window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+    typeof window !== 'undefined' &&
+    window.matchMedia &&
+    window.matchMedia('(prefers-color-scheme: dark)').matches
   );
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     const handler = (e: MediaQueryListEvent) => setDark(e.matches);
     mq.addEventListener('change', handler);
@@ -103,7 +106,9 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
 
   const [memberMode, setMemberMode] = useState<'existing' | 'new'>('existing');
   const [search, setSearch] = useState('');
-  const [clientId, setClientId] = useState<string | null>(() => localStorage.getItem('lastMemberId') || null);
+  const [clientId, setClientId] = useState<string | null>(() =>
+    typeof window !== 'undefined' ? localStorage.getItem('lastMemberId') || null : null
+  );
   const [allMembers, setAllMembers] = useState<Member[]>([]);
   const [filteredMembers, setFilteredMembers] = useState<Member[]>([]);
   const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
@@ -116,8 +121,12 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
   const [newMemberError, setNewMemberError] = useState<string | null>(null);
   const [inputs, setInputs] = useState<MediaDeviceInfo[]>([]);
   const [outputs, setOutputs] = useState<MediaDeviceInfo[]>([]);
-  const [selectedMic, setSelectedMic] = useState(() => localStorage.getItem('selectedMic') || '');
-  const [selectedOutput, setSelectedOutput] = useState(() => localStorage.getItem('selectedOutput') || '');
+  const [selectedMic, setSelectedMic] = useState(() =>
+    typeof window !== 'undefined' ? localStorage.getItem('selectedMic') || '' : ''
+  );
+  const [selectedOutput, setSelectedOutput] = useState(() =>
+    typeof window !== 'undefined' ? localStorage.getItem('selectedOutput') || '' : ''
+  );
   const [recording, setRecording] = useState(false);
   const [liveStream, setLiveStream] = useState<MediaStream | null>(null);
   const liveVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -232,6 +241,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
   }, [memberMode]);
 
   useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices) return;
     navigator.mediaDevices.getUserMedia({ audio: true })
       .then(stream => {
         stream.getTracks().forEach(track => track.stop());
@@ -266,7 +276,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         if (selectedMic && selectedMic !== 'bluetooth') {
           constraints = { audio: { deviceId: { exact: selectedMic } } };
         } else if (selectedMic === 'bluetooth') {
-          // Try to find bluetooth device
           const devices = await navigator.mediaDevices.enumerateDevices();
           const bt = devices.find(d => d.kind === 'audioinput' && d.label.toLowerCase().includes('bluetooth'));
           if (bt) constraints = { audio: { deviceId: { exact: bt.deviceId } } };
@@ -286,7 +295,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         function update() {
           if (stopped) return;
           analyser.getByteTimeDomainData(dataArray);
-          // Calculate RMS
           let sum = 0;
           for (let i = 0; i < dataArray.length; i++) {
             const val = (dataArray[i] - 128) / 128;
@@ -320,9 +328,8 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
   // --- Output volume meter logic ---
   useEffect(() => {
     let stopped = false;
-    // If recording, use the actual output from the liveStream
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices) return;
     if (recording && liveStream) {
-      // Clean up previous
       if (outputRecordingAnimationFrameRef.current) cancelAnimationFrame(outputRecordingAnimationFrameRef.current);
       if (outputRecordingAudioContextRef.current) {
         outputRecordingAudioContextRef.current.close();
@@ -336,7 +343,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         outputRecordingAnalyserRef.current.disconnect();
         outputRecordingAnalyserRef.current = null;
       }
-      // Try to get audio from liveStream
       try {
         const audioTracks = liveStream.getAudioTracks();
         if (audioTracks.length > 0) {
@@ -354,7 +360,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
           function update() {
             if (stopped) return;
             analyser.getByteTimeDomainData(dataArray);
-            // Calculate RMS
             let sum = 0;
             for (let i = 0; i < dataArray.length; i++) {
               const val = (dataArray[i] - 128) / 128;
@@ -388,7 +393,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         }
       };
     } else {
-      // Not recording: use getDisplayMedia for system audio (will prompt)
       let sysStream: MediaStream | null = null;
       async function setupOutputMeter() {
         if (outputAudioContextRef.current) {
@@ -404,9 +408,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
           outputAnalyserRef.current = null;
         }
         try {
-          // Only try if not already recording (avoid conflict)
-          // Try to get system audio stream
-          // Note: This will prompt the user for screen share, but we only want audio
           sysStream = await (navigator.mediaDevices as any).getDisplayMedia({
             video: false,
             audio: { 
@@ -431,7 +432,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
             function update() {
               if (stopped) return;
               analyser.getByteTimeDomainData(dataArray);
-              // Calculate RMS
               let sum = 0;
               for (let i = 0; i < dataArray.length; i++) {
                 const val = (dataArray[i] - 128) / 128;
@@ -530,10 +530,14 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
   }, [liveStream, recording, selectedOutput, outputs]);
 
   useEffect(() => {
-    console.log('[RecordingPanel] mounted');
-    return () => {
-      console.log('[RecordingPanel] unmounted');
-    };
+    if (typeof window !== 'undefined') {
+      // eslint-disable-next-line no-console
+      console.log('[RecordingPanel] mounted');
+      return () => {
+        // eslint-disable-next-line no-console
+        console.log('[RecordingPanel] unmounted');
+      };
+    }
   }, []);
 
   const handlePauseResume = () => {
@@ -654,7 +658,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         const found = allMembers.find(m => m.id === clientId);
         if (!found) {
           setRecordingError('Selected member does not exist.');
-          localStorage.removeItem('lastMemberId');
+          if (typeof window !== 'undefined') localStorage.removeItem('lastMemberId');
           setClientId(null);
           return;
         }
@@ -698,7 +702,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
           return;
         }
         setClientId(data.id);
-        localStorage.setItem('lastMemberId', data.id);
+        if (typeof window !== 'undefined') localStorage.setItem('lastMemberId', data.id);
         setNewMemberLoading(false);
         finalClientId = data.id;
       } catch (err) {
@@ -734,7 +738,9 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
       } else if (insertData && insertData.length > 0) {
         const newRecording = insertData[0];
         setRecordedVideoUrl(newRecording.video_url);
-        window.dispatchEvent(new CustomEvent('sparky-auto-select-recording', { detail: newRecording.video_url }));
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('sparky-auto-select-recording', { detail: newRecording.video_url }));
+        }
         setStoppedRecordingBlob(null);
         setStoppedRecordingUrl(null);
       }
@@ -743,7 +749,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
     }
   };
 
-  // Only dropdown for member selection, no overlay suggestions
   useEffect(() => {
     if (memberMode !== 'existing') return;
     const lower = search.trim().toLowerCase();
@@ -819,7 +824,10 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         <label style={{ fontWeight: 600 }}>Microphone/Input Device:</label>
         <select
           value={selectedMic}
-          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedMic(e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+            setSelectedMic(e.target.value);
+            if (typeof window !== 'undefined') localStorage.setItem('selectedMic', e.target.value);
+          }}
           style={selectStyle}
         >
           <option value="bluetooth">Bluetooth Audio</option>
@@ -843,7 +851,10 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         <label style={{ fontWeight: 600 }}>Speaker/Output Device:</label>
         <select
           value={selectedOutput}
-          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedOutput(e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+            setSelectedOutput(e.target.value);
+            if (typeof window !== 'undefined') localStorage.setItem('selectedOutput', e.target.value);
+          }}
           style={selectStyle}
         >
           <option value="">Default</option>
@@ -1000,7 +1011,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
                     value={clientId || (filteredMembers.length > 0 ? filteredMembers[0].id : '')}
                     onChange={e => {
                       setClientId(e.target.value);
-                      localStorage.setItem('lastMemberId', e.target.value);
+                      if (typeof window !== 'undefined') localStorage.setItem('lastMemberId', e.target.value);
                     }}
                     style={inputStyle}
                   >

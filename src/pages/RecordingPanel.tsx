@@ -416,7 +416,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
               sampleRate: 44100
             }
           });
-          const audioTracks = sysStream.getAudioTracks();
+          const audioTracks = sysStream?.getAudioTracks() ?? [];
           if (audioTracks.length > 0) {
             const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
             outputAudioContextRef.current = audioCtx;

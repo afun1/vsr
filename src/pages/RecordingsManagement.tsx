@@ -334,11 +334,14 @@ const RecordingsManagement: React.FC = () => {
               style={{
                 background: '#fff',
                 borderRadius: 10,
-                padding: 32,
-                maxWidth: 600,
-                width: '90%',
+                padding: 0,
+                maxWidth: 700,
+                width: '95%',
                 boxShadow: '0 4px 24px #0002',
-                position: 'relative'
+                position: 'relative',
+                maxHeight: '90vh',
+                display: 'flex',
+                flexDirection: 'column'
               }}
               onClick={e => e.stopPropagation()}
             >
@@ -354,15 +357,29 @@ const RecordingsManagement: React.FC = () => {
                   borderRadius: 4,
                   padding: '4px 12px',
                   fontWeight: 600,
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  zIndex: 2
                 }}
               >
                 Close
               </button>
-              <h3 style={{ marginTop: 0, marginBottom: 16 }}>{modalTitle ? `Transcript for ${modalTitle}` : 'Transcript'}</h3>
-              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 15, margin: 0 }}>
+              <h3 style={{ marginTop: 24, marginBottom: 16, paddingLeft: 32, paddingRight: 80 }}>
+                {modalTitle ? `Transcript for ${modalTitle}` : 'Transcript'}
+              </h3>
+              <div
+                style={{
+                  flex: 1,
+                  overflowY: 'auto',
+                  padding: 32,
+                  paddingTop: 0,
+                  minHeight: 0,
+                  fontSize: 15,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word'
+                }}
+              >
                 {modalTranscript}
-              </pre>
+              </div>
             </div>
           </div>
         )}

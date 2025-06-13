@@ -492,20 +492,25 @@ const SearchExport: React.FC = () => {
             <div style={{
               background: '#fff',
               borderRadius: 10,
-              maxWidth: 480,
-              width: '90%',
-              padding: 32,
+              maxWidth: 700,
+              width: '95%',
+              padding: 0,
               boxShadow: '0 8px 32px #0003',
-              position: 'relative'
+              position: 'relative',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column'
             }}>
-              <h3 style={{ marginTop: 0, marginBottom: 16 }}>{modalTitle}</h3>
+              <h3 style={{ marginTop: 24, marginBottom: 16, paddingLeft: 32, paddingRight: 80 }}>{modalTitle}</h3>
               <div style={{
-                maxHeight: 340,
+                flex: 1,
                 overflowY: 'auto',
-                whiteSpace: 'pre-line',
+                padding: 32,
+                paddingTop: 0,
+                minHeight: 0,
                 fontSize: 15,
                 color: '#222',
-                marginBottom: 24
+                whiteSpace: 'pre-line'
               }}>
                 {modalTranscript}
               </div>
@@ -523,10 +528,9 @@ const SearchExport: React.FC = () => {
                   cursor: 'pointer',
                   fontSize: 15,
                   fontWeight: 600,
-                  marginRight: 16,
-                  position: 'absolute',
-                  left: 32,
-                  bottom: 24
+                  marginLeft: 32,
+                  marginBottom: 24,
+                  alignSelf: 'flex-start'
                 }}
               >
                 Download Text

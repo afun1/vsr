@@ -2,9 +2,72 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../auth/supabaseClient';
 import Header from '../Header';
 
+// --- Dark mode hook ---
+const useDarkMode = () => {
+  const [dark, setDark] = useState(() =>
+    window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = (e: MediaQueryListEvent) => setDark(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  return dark;
+};
+
 const RECORDINGS_PER_PAGE_OPTIONS = [20, 40, 60, 80, 100, 'All'];
 
 const RecordingsManagement: React.FC = () => {
+  const darkMode = useDarkMode();
+  const palette = darkMode
+    ? {
+        bg: '#181a20',
+        card: '#23262f',
+        border: '#33384a',
+        text: '#e6e6e6',
+        textSecondary: '#b0b0b0',
+        accent: '#1976d2',
+        accent2: '#28a745',
+        accent3: '#e53935',
+        accent4: '#d81b60',
+        accent5: '#2d3a4a',
+        accent6: '#3a2d4a',
+        tableBg: '#23262f',
+        tableBorder: '#33384a',
+        inputBg: '#23262f',
+        inputText: '#e6e6e6',
+        inputBorder: '#33384a',
+        shadow: '0 2px 12px #0008',
+        modalBg: '#23262f',
+        modalText: '#e6e6e6',
+        modalBorder: '#33384a',
+        modalShadow: '0 4px 24px #000a'
+      }
+    : {
+        bg: '#f7faff',
+        card: '#fff',
+        border: '#eee',
+        text: '#222',
+        textSecondary: '#888',
+        accent: '#1976d2',
+        accent2: '#28a745',
+        accent3: '#e53935',
+        accent4: '#d81b60',
+        accent5: '#e3f2fd',
+        accent6: '#fce4ec',
+        tableBg: '#fff',
+        tableBorder: '#ccc',
+        inputBg: '#fff',
+        inputText: '#222',
+        inputBorder: '#ccc',
+        shadow: '0 2px 8px #0001',
+        modalBg: '#fff',
+        modalText: '#222',
+        modalBorder: '#eee',
+        modalShadow: '0 4px 24px #0002'
+      };
+
   const [recordings, setRecordings] = useState<any[]>([]);
   const [recordingSearch, setRecordingSearch] = useState('');
   const [recordingPage, setRecordingPage] = useState(1);
@@ -84,8 +147,8 @@ const RecordingsManagement: React.FC = () => {
   return (
     <>
       <Header />
-      <div style={{ padding: 20, maxWidth: 1400, margin: '0 auto', paddingTop: 100 }}>
-        <h3>Recordings Management</h3>
+      <div style={{ padding: 20, maxWidth: 1400, margin: '0 auto', paddingTop: 100, background: palette.bg, minHeight: '100vh', color: palette.text }}>
+        <h3 style={{ color: palette.text }}>Recordings Management</h3>
         <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <input
@@ -93,9 +156,18 @@ const RecordingsManagement: React.FC = () => {
               placeholder="Search recordings by URL, transcript, or ID..."
               value={recordingSearch}
               onChange={e => setRecordingSearch(e.target.value)}
-              style={{ fontSize: 15, padding: '4px 10px', width: 320 }}
+              style={{
+                fontSize: 15,
+                padding: '4px 10px',
+                width: 320,
+                background: palette.inputBg,
+                color: palette.inputText,
+                border: `1px solid ${palette.inputBorder}`,
+                borderRadius: 6,
+                outline: 'none'
+              }}
             />
-            <span style={{ color: '#888', fontSize: 15 }}>
+            <span style={{ color: palette.textSecondary, fontSize: 15 }}>
               Files per page:
               <select
                 value={recordingsPerPage}
@@ -103,7 +175,15 @@ const RecordingsManagement: React.FC = () => {
                   setRecordingPage(1);
                   setRecordingsPerPage(e.target.value === 'All' ? 'All' : Number(e.target.value));
                 }}
-                style={{ marginLeft: 8, fontSize: 15, padding: '2px 8px' }}
+                style={{
+                  marginLeft: 8,
+                  fontSize: 15,
+                  padding: '2px 8px',
+                  background: palette.inputBg,
+                  color: palette.inputText,
+                  border: `1px solid ${palette.inputBorder}`,
+                  borderRadius: 6
+                }}
               >
                 {RECORDINGS_PER_PAGE_OPTIONS.map(opt => (
                   <option key={opt} value={opt}>{opt}</option>
@@ -112,24 +192,63 @@ const RecordingsManagement: React.FC = () => {
             </span>
           </div>
           <div style={{ display: 'flex', gap: 12, marginLeft: 'auto' }}>
-            <button onClick={() => exportCSV(filteredRecordings, ['id','video_url','transcript','created_at','client_id','user_id'], 'recordings.csv')} style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>
+            <button
+              onClick={() => exportCSV(filteredRecordings, ['id','video_url','transcript','created_at','client_id','user_id'], 'recordings.csv')}
+              style={{
+                background: palette.accent,
+                color: '#fff',
+                border: 'none',
+                borderRadius: 4,
+                padding: '6px 14px',
+                fontWeight: 600,
+                boxShadow: palette.shadow
+              }}
+            >
               Export Recordings CSV
             </button>
-            <button onClick={handleBulkDeleteRecordings} disabled={selectedRecordingIds.length === 0} style={{ background: '#e53935', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>
+            <button
+              onClick={handleBulkDeleteRecordings}
+              disabled={selectedRecordingIds.length === 0}
+              style={{
+                background: palette.accent3,
+                color: '#fff',
+                border: 'none',
+                borderRadius: 4,
+                padding: '6px 14px',
+                fontWeight: 600,
+                opacity: selectedRecordingIds.length === 0 ? 0.6 : 1,
+                cursor: selectedRecordingIds.length === 0 ? 'not-allowed' : 'pointer'
+              }}
+            >
               Delete Selected
             </button>
           </div>
         </div>
         {loading ? (
-          <div>Loading recordings...</div>
+          <div style={{ color: palette.textSecondary }}>Loading recordings...</div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px #0001', marginBottom: 24 }}>
+          <table style={{
+            width: '100%',
+            borderCollapse: 'collapse',
+            fontSize: 14,
+            background: palette.tableBg,
+            borderRadius: 8,
+            boxShadow: palette.shadow,
+            marginBottom: 24,
+            color: palette.text
+          }}>
             <thead>
               <tr>
-                <th><input type="checkbox" checked={pagedRecordings.length > 0 && pagedRecordings.every(r => selectedRecordingIds.includes(r.id))} onChange={e => setSelectedRecordingIds(e.target.checked ? pagedRecordings.map(r => r.id) : [])} /></th>
-                <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Title</th>
-                <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Play / URL</th>
-                <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Transcript</th>
+                <th style={{ background: palette.tableBg, borderBottom: `1px solid ${palette.tableBorder}` }}>
+                  <input
+                    type="checkbox"
+                    checked={pagedRecordings.length > 0 && pagedRecordings.every(r => selectedRecordingIds.includes(r.id))}
+                    onChange={e => setSelectedRecordingIds(e.target.checked ? pagedRecordings.map(r => r.id) : [])}
+                  />
+                </th>
+                <th style={{ textAlign: 'left', borderBottom: `1px solid ${palette.tableBorder}` }}>Title</th>
+                <th style={{ textAlign: 'left', borderBottom: `1px solid ${palette.tableBorder}` }}>Play / URL</th>
+                <th style={{ textAlign: 'left', borderBottom: `1px solid ${palette.tableBorder}` }}>Transcript</th>
               </tr>
             </thead>
             <tbody>
@@ -155,17 +274,37 @@ const RecordingsManagement: React.FC = () => {
                 }
                 const createdAt = createdAtDate ? createdAtDate.toLocaleString() : '-';
                 return (
-                  <tr key={r.id}>
-                    <td><input type="checkbox" checked={selectedRecordingIds.includes(r.id)} onChange={e => setSelectedRecordingIds(e.target.checked ? [...selectedRecordingIds, r.id] : selectedRecordingIds.filter(id => id !== r.id))} /></td>
+                  <tr key={r.id} style={{ background: palette.card }}>
                     <td>
-                      <div>{clientName}</div>
-                      <div style={{ color: '#888', fontSize: 13 }}>By: {displayName}</div>
-                      <div style={{ color: '#888', fontSize: 13 }}>{createdAt}</div>
+                      <input
+                        type="checkbox"
+                        checked={selectedRecordingIds.includes(r.id)}
+                        onChange={e => setSelectedRecordingIds(e.target.checked ? [...selectedRecordingIds, r.id] : selectedRecordingIds.filter(id => id !== r.id))}
+                      />
+                    </td>
+                    <td>
+                      <div style={{ color: palette.text }}>{clientName}</div>
+                      <div style={{ color: palette.textSecondary, fontSize: 13 }}>By: {displayName}</div>
+                      <div style={{ color: palette.textSecondary, fontSize: 13 }}>{createdAt}</div>
                     </td>
                     <td>
                       {r.video_url ? (
                         <>
-                          <button onClick={() => window.open(r.video_url, '_blank')} style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600, marginRight: 8 }}>Play</button>
+                          <button
+                            onClick={() => window.open(r.video_url, '_blank')}
+                            style={{
+                              background: palette.accent,
+                              color: '#fff',
+                              border: 'none',
+                              borderRadius: 4,
+                              padding: '6px 14px',
+                              fontWeight: 600,
+                              marginRight: 8,
+                              boxShadow: palette.shadow
+                            }}
+                          >
+                            Play
+                          </button>
                           <button
                             onClick={async (e) => {
                               e.preventDefault();
@@ -173,16 +312,24 @@ const RecordingsManagement: React.FC = () => {
                               setCopiedUrlId(r.id);
                               setTimeout(() => setCopiedUrlId(null), 1200);
                             }}
-                            style={{ color: '#1976d2', background: 'none', border: 'none', textDecoration: 'underline', fontSize: 14, cursor: 'pointer', position: 'relative' }}
+                            style={{
+                              color: palette.accent,
+                              background: 'none',
+                              border: 'none',
+                              textDecoration: 'underline',
+                              fontSize: 14,
+                              cursor: 'pointer',
+                              position: 'relative'
+                            }}
                           >
                             {copiedUrlId === r.id ? 'Copied!' : 'Get URL'}
                           </button>
                         </>
                       ) : (
-                        <span style={{ color: '#888' }}>No video</span>
+                        <span style={{ color: palette.textSecondary }}>No video</span>
                       )}
                     </td>
-                    <td style={{ maxWidth: 320, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
+                    <td style={{ maxWidth: 320, wordBreak: 'break-word', whiteSpace: 'pre-wrap', color: palette.text }}>
                       {r.transcript
                         ? (() => {
                             let truncated = '';
@@ -200,7 +347,7 @@ const RecordingsManagement: React.FC = () => {
                                 <br />
                                 <a
                                   href="#"
-                                  style={{ color: '#1976d2', marginRight: 12 }}
+                                  style={{ color: palette.accent, marginRight: 12 }}
                                   onClick={e => {
                                     e.preventDefault();
                                     setModalTranscript(r.transcript);
@@ -212,7 +359,7 @@ const RecordingsManagement: React.FC = () => {
                                 </a>
                                 <a
                                   href="#"
-                                  style={{ color: '#1976d2' }}
+                                  style={{ color: palette.accent }}
                                   onClick={e => {
                                     e.preventDefault();
                                     const safeClient = clientName.replace(/[^a-zA-Z0-9-_]/g, '');
@@ -249,7 +396,7 @@ const RecordingsManagement: React.FC = () => {
                 if (recordingPage > 1) setRecordingPage(p => Math.max(1, p - 1));
               }}
               style={{
-                color: recordingPage === 1 ? '#888' : '#1976d2',
+                color: recordingPage === 1 ? palette.textSecondary : palette.accent,
                 textDecoration: 'underline',
                 pointerEvents: recordingPage === 1 ? 'none' : 'auto',
                 fontWeight: 600,
@@ -267,7 +414,7 @@ const RecordingsManagement: React.FC = () => {
                   setRecordingPage(i + 1);
                 }}
                 style={{
-                  color: recordingPage === i + 1 ? '#28a745' : '#1976d2',
+                  color: recordingPage === i + 1 ? palette.accent2 : palette.accent,
                   textDecoration: 'underline',
                   fontWeight: recordingPage === i + 1 ? 700 : 600,
                   marginRight: 12
@@ -283,7 +430,7 @@ const RecordingsManagement: React.FC = () => {
                 if (recordingPage < recordingPageCount) setRecordingPage(p => Math.min(recordingPageCount, p + 1));
               }}
               style={{
-                color: recordingPage === recordingPageCount ? '#888' : '#1976d2',
+                color: recordingPage === recordingPageCount ? palette.textSecondary : palette.accent,
                 textDecoration: 'underline',
                 pointerEvents: recordingPage === recordingPageCount ? 'none' : 'auto',
                 fontWeight: 600
@@ -295,9 +442,9 @@ const RecordingsManagement: React.FC = () => {
           <div style={{ marginLeft: 16 }}>
             <button
               style={{
-                background: recordingsPerPage === 'All' ? '#1976d2' : '#fff',
-                color: recordingsPerPage === 'All' ? '#fff' : '#1976d2',
-                border: '1px solid #1976d2',
+                background: recordingsPerPage === 'All' ? palette.accent : palette.card,
+                color: recordingsPerPage === 'All' ? '#fff' : palette.accent,
+                border: `1px solid ${palette.accent}`,
                 borderRadius: 4,
                 padding: '4px 14px',
                 fontWeight: 600,
@@ -322,7 +469,7 @@ const RecordingsManagement: React.FC = () => {
               left: 0,
               width: '100vw',
               height: '100vh',
-              background: 'rgba(0,0,0,0.35)',
+              background: darkMode ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.35)',
               zIndex: 9999,
               display: 'flex',
               alignItems: 'center',
@@ -332,16 +479,18 @@ const RecordingsManagement: React.FC = () => {
           >
             <div
               style={{
-                background: '#fff',
+                background: palette.modalBg,
+                color: palette.modalText,
                 borderRadius: 10,
                 padding: 0,
                 maxWidth: 700,
                 width: '95%',
-                boxShadow: '0 4px 24px #0002',
+                boxShadow: palette.modalShadow,
                 position: 'relative',
                 maxHeight: '90vh',
                 display: 'flex',
-                flexDirection: 'column'
+                flexDirection: 'column',
+                border: `1px solid ${palette.modalBorder}`
               }}
               onClick={e => e.stopPropagation()}
             >
@@ -351,7 +500,7 @@ const RecordingsManagement: React.FC = () => {
                   position: 'absolute',
                   top: 12,
                   right: 12,
-                  background: '#1976d2',
+                  background: palette.accent,
                   color: '#fff',
                   border: 'none',
                   borderRadius: 4,
@@ -363,7 +512,7 @@ const RecordingsManagement: React.FC = () => {
               >
                 Close
               </button>
-              <h3 style={{ marginTop: 24, marginBottom: 16, paddingLeft: 32, paddingRight: 80 }}>
+              <h3 style={{ marginTop: 24, marginBottom: 16, paddingLeft: 32, paddingRight: 80, color: palette.modalText }}>
                 {modalTitle ? `Transcript for ${modalTitle}` : 'Transcript'}
               </h3>
               <div
@@ -375,7 +524,8 @@ const RecordingsManagement: React.FC = () => {
                   minHeight: 0,
                   fontSize: 15,
                   whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word'
+                  wordBreak: 'break-word',
+                  color: palette.modalText
                 }}
               >
                 {modalTranscript}

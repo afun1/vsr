@@ -4,6 +4,20 @@ import { useAuth } from '../auth/AuthContext';
 // @ts-ignore
 import FileSaver from 'file-saver';
 
+// --- Dark mode hook ---
+const useDarkMode = () => {
+  const [dark, setDark] = useState(() =>
+    window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = (e: MediaQueryListEvent) => setDark(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  return dark;
+};
+
 interface ScreenRecorderProps {
   recordedVideoUrl?: string | null;
 }
@@ -25,6 +39,55 @@ function formatDateForFilename(dateString: string) {
 }
 
 const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => {
+  const darkMode = useDarkMode();
+  const palette = darkMode
+    ? {
+        bg: '#181a20',
+        card: '#23262f',
+        border: '#33384a',
+        text: '#e6e6e6',
+        textSecondary: '#b0b0b0',
+        accent: '#1976d2',
+        accent2: '#28a745',
+        accent3: '#e53935',
+        accent4: '#d81b60',
+        accent5: '#2d3a4a',
+        accent6: '#3a2d4a',
+        tableBg: '#23262f',
+        tableBorder: '#33384a',
+        inputBg: '#23262f',
+        inputText: '#e6e6e6',
+        inputBorder: '#33384a',
+        shadow: '0 2px 12px #0008',
+        modalBg: '#23262f',
+        modalText: '#e6e6e6',
+        modalBorder: '#33384a',
+        modalShadow: '0 4px 24px #000a'
+      }
+    : {
+        bg: '#f7faff',
+        card: '#fff',
+        border: '#eee',
+        text: '#222',
+        textSecondary: '#888',
+        accent: '#1976d2',
+        accent2: '#28a745',
+        accent3: '#e53935',
+        accent4: '#d81b60',
+        accent5: '#e3f2fd',
+        accent6: '#fce4ec',
+        tableBg: '#fff',
+        tableBorder: '#ccc',
+        inputBg: '#fff',
+        inputText: '#222',
+        inputBorder: '#ccc',
+        shadow: '0 2px 8px #0001',
+        modalBg: '#fff',
+        modalText: '#222',
+        modalBorder: '#eee',
+        modalShadow: '0 4px 24px #0002'
+      };
+
   const { user } = useAuth();
   const [recordings, setRecordings] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -143,19 +206,97 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
     return fields.some(f => f.includes(searchLower));
   });
 
+  // --- Styles ---
+  const cardStyle: React.CSSProperties = {
+    width: 480,
+    background: palette.card,
+    borderRadius: 10,
+    boxShadow: palette.shadow,
+    padding: 24,
+    margin: '0 auto',
+    marginBottom: 32,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    color: palette.text,
+    border: `1px solid ${palette.border}`,
+    transition: 'background 0.2s, color 0.2s'
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    padding: 10,
+    borderRadius: 6,
+    border: `1px solid ${palette.inputBorder}`,
+    fontSize: 16,
+    background: palette.inputBg,
+    color: palette.inputText,
+    marginBottom: 0,
+    outline: 'none',
+    boxSizing: 'border-box',
+    transition: 'background 0.2s, color 0.2s, border 0.2s'
+  };
+
+  const previewPlaceholderStyle: React.CSSProperties = {
+    width: '100%',
+    height: 220,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: palette.textSecondary,
+    background: darkMode ? '#23262f' : '#f5f5f5',
+    borderRadius: 8
+  };
+
+  const recordingCardStyle = (selected: boolean): React.CSSProperties => ({
+    width: 240,
+    background: selected ? palette.accent5 : palette.card,
+    borderRadius: 10,
+    boxShadow: selected ? '0 4px 16px #1976d233' : palette.shadow,
+    padding: 12,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    cursor: 'pointer',
+    border: selected ? `2px solid ${palette.accent}` : '2px solid transparent',
+    color: palette.text,
+    transition: 'background 0.2s, color 0.2s, border 0.2s'
+  });
+
+  const transcriptBoxStyle: React.CSSProperties = {
+    width: '100%',
+    minHeight: 54,
+    maxHeight: 54,
+    resize: 'none',
+    fontSize: 13,
+    color: palette.text,
+    marginTop: 8,
+    marginBottom: 4,
+    borderRadius: 6,
+    border: `1px solid ${palette.inputBorder}`,
+    background: palette.inputBg,
+    overflow: 'hidden',
+    lineHeight: '1.2',
+    boxSizing: 'border-box',
+    display: '-webkit-box',
+    WebkitLineClamp: 3,
+    WebkitBoxOrient: 'vertical',
+    whiteSpace: 'pre-line'
+  };
+
   return (
-    <div>
+    <div style={{ background: palette.bg, minHeight: '100vh', paddingBottom: 32 }}>
       <div style={{ width: 480, margin: '0 auto', marginBottom: 16, display: 'flex', justifyContent: 'center' }}>
         <input
           type="text"
           placeholder="Search by member name, email, or recorder..."
           value={search}
           onChange={e => setSearch(e.target.value)}
-          style={{ width: '100%', padding: 10, borderRadius: 6, border: '1px solid #ccc', fontSize: 16 }}
+          style={inputStyle}
         />
       </div>
-      <div style={{ width: 480, background: '#fff', borderRadius: 10, boxShadow: '0 2px 12px #0001', padding: 24, margin: '0 auto', marginBottom: 32, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <h3>Recording Preview</h3>
+      <div style={cardStyle}>
+        <h3 style={{ color: palette.text }}>Recording Preview</h3>
         {selectedRecording && selectedRecording.video_url ? (
           <video
             key={selectedRecording.video_url}
@@ -166,19 +307,32 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
             style={{ width: '100%', borderRadius: 8, background: '#000' }}
           />
         ) : (
-          <div style={{ width: '100%', height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888', background: '#f5f5f5', borderRadius: 8 }}>
+          <div style={previewPlaceholderStyle}>
             Select a recording below to preview
           </div>
         )}
         <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
           {selectedRecording && (
-            <button onClick={() => setSelectedRecording(null)} style={{ background: '#007bff', color: '#fff', border: 'none', borderRadius: 4, padding: '8px 16px' }}>Clear Preview</button>
+            <button
+              onClick={() => setSelectedRecording(null)}
+              style={{
+                background: palette.accent,
+                color: '#fff',
+                border: 'none',
+                borderRadius: 4,
+                padding: '8px 16px',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              Clear Preview
+            </button>
           )}
         </div>
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, marginTop: 24, justifyContent: 'center' }}>
         {filteredRecordings.length === 0 && !loading ? (
-          <div style={{ color: '#888', fontSize: 16, textAlign: 'center', margin: '32px 0' }}>No recordings to display yet.</div>
+          <div style={{ color: palette.textSecondary, fontSize: 16, textAlign: 'center', margin: '32px 0' }}>No recordings to display yet.</div>
         ) : (
           filteredRecordings
             .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
@@ -206,7 +360,9 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
                 : transcript;
               const cardTitle = `${clientDisplayNames.length > 0 ? clientDisplayNames.join(',') : 'Recording'}-by-${displayName.replace(/\s+/g, '')}-${formatDateForFilename(rec.created_at)}`;
               return (
-                <div key={rec.id} style={{ width: 240, background: selectedRecording && selectedRecording.id === rec.id ? '#e3f2fd' : '#fff', borderRadius: 10, boxShadow: selectedRecording && selectedRecording.id === rec.id ? '0 4px 16px #1976d233' : '0 2px 12px #0001', padding: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', border: selectedRecording && selectedRecording.id === rec.id ? '2px solid #1976d2' : '2px solid transparent' }}
+                <div
+                  key={rec.id}
+                  style={recordingCardStyle(selectedRecording && selectedRecording.id === rec.id)}
                   onClick={() => setSelectedRecording(rec)}
                 >
                   {rec.video_url ? (
@@ -217,18 +373,18 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
                       onClick={e => { e.stopPropagation(); setSelectedRecording(rec); }}
                     />
                   ) : (
-                    <div style={{ width: '100%', height: 135, background: '#eee', borderRadius: 8, marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888' }}>No Video</div>
+                    <div style={{ width: '100%', height: 135, background: palette.inputBg, borderRadius: 8, marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', color: palette.textSecondary }}>No Video</div>
                   )}
-                  <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 2 }}>
+                  <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 2, color: palette.text }}>
                     {clientDisplayNames.length > 0 ? clientDisplayNames.join(', ') : ''}
                   </div>
-                  <div style={{ color: '#888', fontSize: 14, marginBottom: 2 }}>By: {displayName}</div>
-                  <div style={{ color: '#888', fontSize: 13, marginBottom: 8 }}>{createdAt}</div>
+                  <div style={{ color: palette.textSecondary, fontSize: 14, marginBottom: 2 }}>By: {displayName}</div>
+                  <div style={{ color: palette.textSecondary, fontSize: 13, marginBottom: 8 }}>{createdAt}</div>
                   <div style={{ display: 'flex', gap: 12, marginTop: 8, justifyContent: 'center' }}>
                     <button
                       title="Play"
                       onClick={e => { e.stopPropagation(); setSelectedRecording(rec); }}
-                      style={{ width: 40, height: 40, borderRadius: '50%', background: '#1976d2', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px #1976d222', cursor: 'pointer', padding: 0 }}
+                      style={{ width: 40, height: 40, borderRadius: '50%', background: palette.accent, border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px #1976d222', cursor: 'pointer', padding: 0 }}
                     >
                       <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ display: 'block' }}>
                         <polygon points="6,4 16,10 6,16" fill="#fff" />
@@ -255,7 +411,7 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
                           } catch (err) { alert('Failed to download video.'); }
                         }
                       }}
-                      style={{ width: 40, height: 40, borderRadius: '50%', background: '#28a745', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px #28a74522', cursor: 'pointer', padding: 0 }}
+                      style={{ width: 40, height: 40, borderRadius: '50%', background: palette.accent2, border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px #28a74522', cursor: 'pointer', padding: 0 }}
                     >
                       <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ display: 'block' }}>
                         <path d="M10 3v10M10 13l-4-4M10 13l4-4" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -276,38 +432,17 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
                       URL
                     </button>
                   </div>
-                  <div
-                    style={{
-                      width: '100%',
-                      minHeight: 54,
-                      maxHeight: 54,
-                      resize: 'none',
-                      fontSize: 13,
-                      color: '#333',
-                      marginTop: 8,
-                      marginBottom: 4,
-                      borderRadius: 6,
-                      border: '1px solid #ddd',
-                      background: '#fafbfc',
-                      overflow: 'hidden',
-                      lineHeight: '1.2',
-                      boxSizing: 'border-box',
-                      display: '-webkit-box',
-                      WebkitLineClamp: 3,
-                      WebkitBoxOrient: 'vertical',
-                      whiteSpace: 'pre-line'
-                    }}
-                  >
+                  <div style={transcriptBoxStyle}>
                     {transcript
                       ? truncatedTranscript
-                      : <span style={{ color: '#bbb' }}>No transcript</span>
+                      : <span style={{ color: palette.textSecondary }}>No transcript</span>
                     }
                   </div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 4, width: '100%', justifyContent: 'flex-end' }}>
                     <button
                       style={{
                         background: 'none',
-                        color: '#1976d2',
+                        color: palette.accent,
                         border: 'none',
                         textDecoration: 'underline',
                         cursor: 'pointer',
@@ -327,7 +462,7 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
                     <button
                       style={{
                         background: 'none',
-                        color: '#28a745',
+                        color: palette.accent2,
                         border: 'none',
                         textDecoration: 'underline',
                         cursor: 'pointer',
@@ -353,28 +488,30 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
         <div style={{
           position: 'fixed',
           top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.32)',
+          background: darkMode ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.32)',
           zIndex: 1000,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center'
         }}>
           <div style={{
-            background: '#fff',
+            background: palette.modalBg,
+            color: palette.modalText,
             borderRadius: 10,
             maxWidth: 480,
             width: '90%',
             padding: 32,
-            boxShadow: '0 8px 32px #0003',
-            position: 'relative'
+            boxShadow: palette.modalShadow,
+            position: 'relative',
+            border: `1px solid ${palette.modalBorder}`
           }}>
-            <h3 style={{ marginTop: 0, marginBottom: 16 }}>{modalTitle}</h3>
+            <h3 style={{ marginTop: 0, marginBottom: 16, color: palette.modalText }}>{modalTitle}</h3>
             <div style={{
               maxHeight: 340,
               overflowY: 'auto',
               whiteSpace: 'pre-line',
               fontSize: 15,
-              color: '#222',
+              color: palette.modalText,
               marginBottom: 24
             }}>
               {modalTranscript}
@@ -387,7 +524,7 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
               }}
               style={{
                 background: 'none',
-                color: '#28a745',
+                color: palette.accent2,
                 border: 'none',
                 textDecoration: 'underline',
                 cursor: 'pointer',
@@ -404,7 +541,7 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
             <button
               onClick={() => setModalOpen(false)}
               style={{
-                background: '#1976d2',
+                background: palette.accent,
                 color: '#fff',
                 border: 'none',
                 borderRadius: 6,
@@ -428,11 +565,10 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ recordedVideoUrl }) => 
             onClick={() => {
               setRecording(false);
             }}
-            style={{ background: '#dc3545', color: '#fff', border: 'none', borderRadius: 6, padding: '12px 28px', fontSize: 18, fontWeight: 700, cursor: 'pointer', boxShadow: '0 2px 8px #dc354522' }}
+            style={{ background: palette.accent3, color: '#fff', border: 'none', borderRadius: 6, padding: '12px 28px', fontSize: 18, fontWeight: 700, cursor: 'pointer', boxShadow: '0 2px 8px #dc354522' }}
           >
             Stop Recording
           </button>
-          {/* PiP button removed */}
         </div>
       ) : null}
     </div>

@@ -2,6 +2,20 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../auth/supabaseClient';
 
+// --- Dark mode hook ---
+const useDarkMode = () => {
+  const [dark, setDark] = useState(() =>
+    window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = (e: MediaQueryListEvent) => setDark(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  return dark;
+};
+
 interface RecordingPanelProps {
   setRecordedVideoUrl: (url: string | null) => void;
   onStartLiveScreen: (stream: MediaStream) => void;
@@ -32,6 +46,61 @@ type Member = {
 };
 
 const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, onStartLiveScreen }) => {
+  const darkMode = useDarkMode();
+
+  // Palette for dark/light mode
+  const palette = darkMode
+    ? {
+        bg: '#181a20',
+        card: '#23262f',
+        border: '#33384a',
+        text: '#e6e6e6',
+        textSecondary: '#b0b0b0',
+        accent: '#1976d2',
+        accent2: '#28a745',
+        accent3: '#e53935',
+        accent4: '#d81b60',
+        accent5: '#2d3a4a',
+        accent6: '#3a2d4a',
+        tableBg: '#23262f',
+        tableBorder: '#33384a',
+        inputBg: '#23262f',
+        inputText: '#e6e6e6',
+        inputBorder: '#33384a',
+        shadow: '0 2px 12px #0008',
+        meterBg: '#33384a',
+        meterFg: '#28a745',
+        meterFgWarn: '#ff9800',
+        meterFgOut: '#1976d2',
+        error: '#e53935',
+        success: '#28a745'
+      }
+    : {
+        bg: '#fff',
+        card: '#fff',
+        border: '#eee',
+        text: '#222',
+        textSecondary: '#888',
+        accent: '#1976d2',
+        accent2: '#28a745',
+        accent3: '#e53935',
+        accent4: '#d81b60',
+        accent5: '#e3f2fd',
+        accent6: '#fce4ec',
+        tableBg: '#fff',
+        tableBorder: '#ccc',
+        inputBg: '#fff',
+        inputText: '#222',
+        inputBorder: '#ccc',
+        shadow: '0 2px 8px #0001',
+        meterBg: '#eee',
+        meterFg: '#28a745',
+        meterFgWarn: '#ff9800',
+        meterFgOut: '#1976d2',
+        error: '#e53935',
+        success: '#28a745'
+      };
+
   const [memberMode, setMemberMode] = useState<'existing' | 'new'>('existing');
   const [search, setSearch] = useState('');
   const [clientId, setClientId] = useState<string | null>(() => localStorage.getItem('lastMemberId') || null);
@@ -62,11 +131,25 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
   const [recordingSize, setRecordingSize] = useState(0);
   const recordingTimerRef = useRef<number | null>(null);
 
-  // Input volume meter state (not used, so removed unused refs and setters)
-  const [volume] = useState(0);
+  // --- Mic volume state and logic ---
+  const [volume, setVolume] = useState(0);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
 
-  // Output volume meter state (not used, so removed unused setter)
-  const [outputVolume] = useState(0);
+  // --- Output volume state and logic ---
+  const [outputVolume, setOutputVolume] = useState(0);
+  const outputAudioContextRef = useRef<AudioContext | null>(null);
+  const outputAnalyserRef = useRef<AnalyserNode | null>(null);
+  const outputSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const outputAnimationFrameRef = useRef<number | null>(null);
+
+  // --- Output meter during recording ---
+  const outputRecordingAnalyserRef = useRef<AnalyserNode | null>(null);
+  const outputRecordingAudioContextRef = useRef<AudioContext | null>(null);
+  const outputRecordingSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const outputRecordingAnimationFrameRef = useRef<number | null>(null);
 
   // Fetch all clients and profiles once on mount
   useEffect(() => {
@@ -165,6 +248,230 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         });
       });
   }, []);
+
+  // --- Mic volume meter logic ---
+  useEffect(() => {
+    let stopped = false;
+    async function setupMicMeter() {
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+        audioContextRef.current = null;
+      }
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach(track => track.stop());
+        micStreamRef.current = null;
+      }
+      try {
+        let constraints: any = { audio: true };
+        if (selectedMic && selectedMic !== 'bluetooth') {
+          constraints = { audio: { deviceId: { exact: selectedMic } } };
+        } else if (selectedMic === 'bluetooth') {
+          // Try to find bluetooth device
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const bt = devices.find(d => d.kind === 'audioinput' && d.label.toLowerCase().includes('bluetooth'));
+          if (bt) constraints = { audio: { deviceId: { exact: bt.deviceId } } };
+        }
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        micStreamRef.current = stream;
+        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        audioContextRef.current = audioCtx;
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        analyserRef.current = analyser;
+        const source = audioCtx.createMediaStreamSource(stream);
+        source.connect(analyser);
+
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+        function update() {
+          if (stopped) return;
+          analyser.getByteTimeDomainData(dataArray);
+          // Calculate RMS
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) {
+            const val = (dataArray[i] - 128) / 128;
+            sum += val * val;
+          }
+          const rms = Math.sqrt(sum / dataArray.length);
+          setVolume(rms);
+          animationFrameRef.current = requestAnimationFrame(update);
+        }
+        update();
+      } catch (err) {
+        setVolume(0);
+      }
+    }
+    setupMicMeter();
+    return () => {
+      stopped = true;
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+        audioContextRef.current = null;
+      }
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach(track => track.stop());
+        micStreamRef.current = null;
+      }
+    };
+    // eslint-disable-next-line
+  }, [selectedMic]);
+
+  // --- Output volume meter logic ---
+  useEffect(() => {
+    let stopped = false;
+    // If recording, use the actual output from the liveStream
+    if (recording && liveStream) {
+      // Clean up previous
+      if (outputRecordingAnimationFrameRef.current) cancelAnimationFrame(outputRecordingAnimationFrameRef.current);
+      if (outputRecordingAudioContextRef.current) {
+        outputRecordingAudioContextRef.current.close();
+        outputRecordingAudioContextRef.current = null;
+      }
+      if (outputRecordingSourceRef.current) {
+        outputRecordingSourceRef.current.disconnect();
+        outputRecordingSourceRef.current = null;
+      }
+      if (outputRecordingAnalyserRef.current) {
+        outputRecordingAnalyserRef.current.disconnect();
+        outputRecordingAnalyserRef.current = null;
+      }
+      // Try to get audio from liveStream
+      try {
+        const audioTracks = liveStream.getAudioTracks();
+        if (audioTracks.length > 0) {
+          const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+          outputRecordingAudioContextRef.current = audioCtx;
+          const analyser = audioCtx.createAnalyser();
+          analyser.fftSize = 256;
+          outputRecordingAnalyserRef.current = analyser;
+          const source = audioCtx.createMediaStreamSource(new MediaStream([audioTracks[0]]));
+          outputRecordingSourceRef.current = source;
+          source.connect(analyser);
+
+          const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+          function update() {
+            if (stopped) return;
+            analyser.getByteTimeDomainData(dataArray);
+            // Calculate RMS
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+              const val = (dataArray[i] - 128) / 128;
+              sum += val * val;
+            }
+            const rms = Math.sqrt(sum / dataArray.length);
+            setOutputVolume(rms);
+            outputRecordingAnimationFrameRef.current = requestAnimationFrame(update);
+          }
+          update();
+        } else {
+          setOutputVolume(0);
+        }
+      } catch (err) {
+        setOutputVolume(0);
+      }
+      return () => {
+        stopped = true;
+        if (outputRecordingAnimationFrameRef.current) cancelAnimationFrame(outputRecordingAnimationFrameRef.current);
+        if (outputRecordingAudioContextRef.current) {
+          outputRecordingAudioContextRef.current.close();
+          outputRecordingAudioContextRef.current = null;
+        }
+        if (outputRecordingSourceRef.current) {
+          outputRecordingSourceRef.current.disconnect();
+          outputRecordingSourceRef.current = null;
+        }
+        if (outputRecordingAnalyserRef.current) {
+          outputRecordingAnalyserRef.current.disconnect();
+          outputRecordingAnalyserRef.current = null;
+        }
+      };
+    } else {
+      // Not recording: use getDisplayMedia for system audio (will prompt)
+      let sysStream: MediaStream | null = null;
+      async function setupOutputMeter() {
+        if (outputAudioContextRef.current) {
+          outputAudioContextRef.current.close();
+          outputAudioContextRef.current = null;
+        }
+        if (outputSourceRef.current) {
+          outputSourceRef.current.disconnect();
+          outputSourceRef.current = null;
+        }
+        if (outputAnalyserRef.current) {
+          outputAnalyserRef.current.disconnect();
+          outputAnalyserRef.current = null;
+        }
+        try {
+          // Only try if not already recording (avoid conflict)
+          // Try to get system audio stream
+          // Note: This will prompt the user for screen share, but we only want audio
+          sysStream = await (navigator.mediaDevices as any).getDisplayMedia({
+            video: false,
+            audio: { 
+              echoCancellation: false,
+              noiseSuppression: false,
+              sampleRate: 44100
+            }
+          });
+          const audioTracks = sysStream.getAudioTracks();
+          if (audioTracks.length > 0) {
+            const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            outputAudioContextRef.current = audioCtx;
+            const analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 256;
+            outputAnalyserRef.current = analyser;
+            const source = audioCtx.createMediaStreamSource(new MediaStream([audioTracks[0]]));
+            outputSourceRef.current = source;
+            source.connect(analyser);
+
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+            function update() {
+              if (stopped) return;
+              analyser.getByteTimeDomainData(dataArray);
+              // Calculate RMS
+              let sum = 0;
+              for (let i = 0; i < dataArray.length; i++) {
+                const val = (dataArray[i] - 128) / 128;
+                sum += val * val;
+              }
+              const rms = Math.sqrt(sum / dataArray.length);
+              setOutputVolume(rms);
+              outputAnimationFrameRef.current = requestAnimationFrame(update);
+            }
+            update();
+          } else {
+            setOutputVolume(0);
+          }
+        } catch (err) {
+          setOutputVolume(0);
+        }
+      }
+      setupOutputMeter();
+      return () => {
+        stopped = true;
+        if (outputAnimationFrameRef.current) cancelAnimationFrame(outputAnimationFrameRef.current);
+        if (outputAudioContextRef.current) {
+          outputAudioContextRef.current.close();
+          outputAudioContextRef.current = null;
+        }
+        if (outputSourceRef.current) {
+          outputSourceRef.current.disconnect();
+          outputSourceRef.current = null;
+        }
+        if (outputAnalyserRef.current) {
+          outputAnalyserRef.current.disconnect();
+          outputAnalyserRef.current = null;
+        }
+        if (sysStream) {
+          sysStream.getTracks().forEach(track => track.stop());
+        }
+      };
+    }
+    // eslint-disable-next-line
+  }, [selectedOutput, recording, liveStream]);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
@@ -453,15 +760,67 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
     );
   }, [search, memberMode, allMembers]);
 
+  // --- Styles ---
+  const cardStyle: React.CSSProperties = {
+    width: 480,
+    background: palette.card,
+    borderRadius: 10,
+    boxShadow: palette.shadow,
+    padding: 24,
+    marginBottom: 32,
+    color: palette.text,
+    border: `1px solid ${palette.border}`,
+    transition: 'background 0.2s, color 0.2s'
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    background: palette.inputBg,
+    color: palette.inputText,
+    border: `1px solid ${palette.inputBorder}`,
+    borderRadius: 6,
+    padding: '10px 12px',
+    fontSize: 16,
+    marginTop: 4,
+    marginBottom: 0,
+    outline: 'none',
+    boxSizing: 'border-box',
+    transition: 'background 0.2s, color 0.2s, border 0.2s'
+  };
+
+  const selectStyle: React.CSSProperties = {
+    ...inputStyle,
+    width: 260,
+    marginLeft: 10
+  };
+
+  const meterBgStyle: React.CSSProperties = {
+    width: 260,
+    height: 16,
+    background: palette.meterBg,
+    borderRadius: 8,
+    overflow: 'hidden',
+    marginRight: 12,
+    border: `1px solid ${palette.inputBorder}`,
+    position: 'relative'
+  };
+
+  const meterFgStyle = (val: number, warn: boolean, out: boolean): React.CSSProperties => ({
+    width: `${Math.min(100, Math.round(val * 100 * 2))}%`,
+    height: '100%',
+    background: out ? palette.meterFgOut : warn ? palette.meterFgWarn : palette.meterFg,
+    transition: 'width 0.1s linear'
+  });
+
   return (
-    <div style={{ width: 480, background: '#fff', borderRadius: 10, boxShadow: '0 2px 12px #0001', padding: 24, marginBottom: 32 }}>
-      <h3>New Recording</h3>
+    <div style={cardStyle}>
+      <h3 style={{ color: palette.text }}>New Recording</h3>
       <div style={{ marginTop: 0, marginBottom: 8 }}>
         <label style={{ fontWeight: 600 }}>Microphone/Input Device:</label>
         <select
           value={selectedMic}
           onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedMic(e.target.value)}
-          style={{ marginLeft: 10, width: 260 }}
+          style={selectStyle}
         >
           <option value="bluetooth">Bluetooth Audio</option>
           {inputs.map((input, idx) => (
@@ -473,24 +832,10 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
       </div>
       {/* Input Volume Meter */}
       <div style={{ margin: '8px 0 16px 0', height: 24, display: 'flex', alignItems: 'center' }}>
-        <div style={{
-          width: 260,
-          height: 16,
-          background: '#eee',
-          borderRadius: 8,
-          overflow: 'hidden',
-          marginRight: 12,
-          border: '1px solid #ccc',
-          position: 'relative'
-        }}>
-          <div style={{
-            width: `${Math.min(100, Math.round(volume * 100 * 2))}%`,
-            height: '100%',
-            background: volume > 0.5 ? '#ff9800' : '#28a745',
-            transition: 'width 0.1s linear'
-          }} />
+        <div style={meterBgStyle}>
+          <div style={meterFgStyle(volume, volume > 0.05, false)} />
         </div>
-        <span style={{ fontSize: 13, color: '#888' }}>
+        <span style={{ fontSize: 13, color: palette.textSecondary }}>
           {volume > 0.01 ? 'Mic Active' : 'No Signal'}
         </span>
       </div>
@@ -499,7 +844,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         <select
           value={selectedOutput}
           onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedOutput(e.target.value)}
-          style={{ marginLeft: 10, width: 260 }}
+          style={selectStyle}
         >
           <option value="">Default</option>
           <option value="system">System Audio (if supported)</option>
@@ -513,24 +858,10 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
       </div>
       {/* Output Volume Meter */}
       <div style={{ margin: '8px 0 16px 0', height: 24, display: 'flex', alignItems: 'center' }}>
-        <div style={{
-          width: 260,
-          height: 16,
-          background: '#eee',
-          borderRadius: 8,
-          overflow: 'hidden',
-          marginRight: 12,
-          border: '1px solid #ccc',
-          position: 'relative'
-        }}>
-          <div style={{
-            width: `${Math.min(100, Math.round(outputVolume * 100 * 2))}%`,
-            height: '100%',
-            background: outputVolume > 0.5 ? '#ff9800' : '#1976d2',
-            transition: 'width 0.1s linear'
-          }} />
+        <div style={meterBgStyle}>
+          <div style={meterFgStyle(outputVolume, outputVolume > 0.05, true)} />
         </div>
-        <span style={{ fontSize: 13, color: '#888' }}>
+        <span style={{ fontSize: 13, color: palette.textSecondary }}>
           {outputVolume > 0.01 ? 'Output Active' : 'No Signal'}
         </span>
       </div>
@@ -541,13 +872,13 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
             <video ref={liveVideoRef} style={{ width: 400, height: 220, borderRadius: 8, background: '#000', marginBottom: 24 }} autoPlay muted />
             {/* Recording time and file size */}
             <div style={{ display: 'flex', gap: 24, marginBottom: 12 }}>
-              <span style={{ fontWeight: 600, color: '#1976d2', fontSize: 16 }}>
+              <span style={{ fontWeight: 600, color: palette.accent, fontSize: 16 }}>
                 Time: {formatDuration(recordingTime)}
               </span>
-              <span style={{ fontWeight: 600, color: '#888', fontSize: 16 }}>
+              <span style={{ fontWeight: 600, color: palette.textSecondary, fontSize: 16 }}>
                 Size: {formatBytes(recordingSize)}
               </span>
-              <span style={{ fontWeight: 600, color: '#888', fontSize: 16 }}>
+              <span style={{ fontWeight: 600, color: palette.textSecondary, fontSize: 16 }}>
                 Max: {SUPABASE_MAX_SIZE_MB} MB
               </span>
             </div>
@@ -555,14 +886,34 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
               {!isPaused ? (
                 <button
                   onClick={handlePauseResume}
-                  style={{ background: '#ff9800', color: '#fff', fontWeight: 700, border: 'none', borderRadius: 6, padding: '12px 28px', fontSize: 18, cursor: 'pointer', boxShadow: '0 2px 8px #ff980022' }}
+                  style={{
+                    background: palette.meterFgWarn,
+                    color: '#fff',
+                    fontWeight: 700,
+                    border: 'none',
+                    borderRadius: 6,
+                    padding: '12px 28px',
+                    fontSize: 18,
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 8px #ff980022'
+                  }}
                 >
                   Pause
                 </button>
               ) : (
                 <button
                   onClick={handlePauseResume}
-                  style={{ background: '#1976d2', color: '#fff', fontWeight: 700, border: 'none', borderRadius: 6, padding: '12px 28px', fontSize: 18, cursor: 'pointer', boxShadow: '0 2px 8px #1976d222' }}
+                  style={{
+                    background: palette.accent,
+                    color: '#fff',
+                    fontWeight: 700,
+                    border: 'none',
+                    borderRadius: 6,
+                    padding: '12px 28px',
+                    fontSize: 18,
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 8px #1976d222'
+                  }}
                 >
                   Resume
                 </button>
@@ -576,7 +927,18 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
                   setLiveStream(null);
                   setIsPaused(false);
                 }}
-                style={{ background: '#dc3545', color: '#fff', fontWeight: 700, border: 'none', borderRadius: 6, padding: '12px 28px', fontSize: 18, cursor: 'pointer', boxShadow: '0 2px 8px #dc354522', marginTop: 0 }}
+                style={{
+                  background: palette.accent3,
+                  color: '#fff',
+                  fontWeight: 700,
+                  border: 'none',
+                  borderRadius: 6,
+                  padding: '12px 28px',
+                  fontSize: 18,
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 8px #dc354522',
+                  marginTop: 0
+                }}
               >
                 Stop Recording
               </button>
@@ -587,13 +949,13 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
             <video src={stoppedRecordingUrl || undefined} controls style={{ width: 400, height: 220, borderRadius: 8, background: '#000', marginBottom: 24 }} />
             {/* Show final time and file size */}
             <div style={{ display: 'flex', gap: 24, marginBottom: 12 }}>
-              <span style={{ fontWeight: 600, color: '#1976d2', fontSize: 16 }}>
+              <span style={{ fontWeight: 600, color: palette.accent, fontSize: 16 }}>
                 Time: {formatDuration(recordingTime)}
               </span>
-              <span style={{ fontWeight: 600, color: '#888', fontSize: 16 }}>
+              <span style={{ fontWeight: 600, color: palette.textSecondary, fontSize: 16 }}>
                 Size: {formatBytes(recordingSize)}
               </span>
-              <span style={{ fontWeight: 600, color: '#888', fontSize: 16 }}>
+              <span style={{ fontWeight: 600, color: palette.textSecondary, fontSize: 16 }}>
                 Max: {SUPABASE_MAX_SIZE_MB} MB
               </span>
             </div>
@@ -630,7 +992,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
                     value={search}
                     onChange={e => setSearch(e.target.value)}
                     placeholder="Type to filter by name, email, or username"
-                    style={{ width: '100%', marginBottom: 6 }}
+                    style={inputStyle}
                   />
                   <label htmlFor="existing-member-dropdown">Select Member:</label>
                   <select
@@ -640,7 +1002,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
                       setClientId(e.target.value);
                       localStorage.setItem('lastMemberId', e.target.value);
                     }}
-                    style={{ width: '100%', marginBottom: 6 }}
+                    style={inputStyle}
                   >
                     {filteredMembers.length > 0 ? (
                       filteredMembers.map(member => (
@@ -655,10 +1017,10 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
                     )}
                   </select>
                   {suggestionsError && (
-                    <div style={{ color: 'red', fontSize: 13, marginTop: 4 }}>{suggestionsError}</div>
+                    <div style={{ color: palette.error, fontSize: 13, marginTop: 4 }}>{suggestionsError}</div>
                   )}
                   {filteredMembers.length === 0 && !suggestionsError && (
-                    <div style={{ color: '#888', fontSize: 13, marginTop: 4 }}>No members found.</div>
+                    <div style={{ color: palette.textSecondary, fontSize: 13, marginTop: 4 }}>No members found.</div>
                   )}
                 </div>
               )}
@@ -670,7 +1032,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
                       type="text"
                       value={newFirstName}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewFirstName(e.target.value)}
-                      style={{ width: '100%' }}
+                      style={inputStyle}
                       autoComplete="off"
                     />
                   </label>
@@ -680,7 +1042,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
                       type="text"
                       value={newLastName}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewLastName(e.target.value)}
-                      style={{ width: '100%' }}
+                      style={inputStyle}
                       autoComplete="off"
                     />
                   </label>
@@ -690,7 +1052,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
                       type="email"
                       value={newEmail}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewEmail(e.target.value)}
-                      style={{ width: '100%' }}
+                      style={inputStyle}
                       autoComplete="off"
                     />
                   </label>
@@ -700,7 +1062,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
                       type="text"
                       value={newUsername}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewUsername(e.target.value)}
-                      style={{ width: '100%' }}
+                      style={inputStyle}
                       autoComplete="off"
                     />
                   </label>
@@ -710,11 +1072,11 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
                       type="tel"
                       value={newPhone}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPhone(e.target.value)}
-                      style={{ width: '100%' }}
+                      style={inputStyle}
                       autoComplete="off"
                     />
                   </label>
-                  {newMemberError && <div style={{ color: 'red', fontSize: 13 }}>{newMemberError}</div>}
+                  {newMemberError && <div style={{ color: palette.error, fontSize: 13 }}>{newMemberError}</div>}
                 </div>
               )}
               <button
@@ -725,7 +1087,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
                     : newMemberLoading || !newFirstName.trim() || !newLastName.trim() || !newUsername.trim()
                 }
                 style={{
-                  background: '#28a745',
+                  background: palette.accent2,
                   color: '#fff',
                   fontWeight: 700,
                   border: 'none',
@@ -752,7 +1114,17 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
           <>
             <button
               onClick={handleStartRecording}
-              style={{ background: '#28a745', color: '#fff', fontWeight: 700, border: 'none', borderRadius: 6, padding: '12px 28px', fontSize: 18, cursor: 'pointer', boxShadow: '0 2px 8px #28a74522' }}
+              style={{
+                background: palette.accent2,
+                color: '#fff',
+                fontWeight: 700,
+                border: 'none',
+                borderRadius: 6,
+                padding: '12px 28px',
+                fontSize: 18,
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px #28a74522'
+              }}
             >
               Start Recording
             </button>
@@ -761,7 +1133,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         )}
       </div>
       {recordingError && (
-        <div style={{ color: 'red', fontWeight: 600, margin: '12px 0' }}>{recordingError}</div>
+        <div style={{ color: palette.error, fontWeight: 600, margin: '12px 0' }}>{recordingError}</div>
       )}
     </div>
   );

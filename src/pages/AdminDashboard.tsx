@@ -283,7 +283,7 @@ const AdminDashboard: React.FC = () => {
       };
 
   // Helper styles
-  const inputStyle = {
+  const inputStyle: React.CSSProperties = {
     background: palette.inputBg,
     color: palette.inputText,
     border: `1px solid ${palette.inputBorder}`,
@@ -294,9 +294,9 @@ const AdminDashboard: React.FC = () => {
     transition: 'background 0.2s, color 0.2s, border 0.2s'
   };
 
-  const tableStyle = {
+  const tableStyle: React.CSSProperties = {
     width: '100%',
-    borderCollapse: 'collapse',
+    borderCollapse: 'collapse' as const,
     fontSize: 14,
     background: palette.tableBg,
     borderRadius: 8,
@@ -305,15 +305,15 @@ const AdminDashboard: React.FC = () => {
     color: palette.text
   };
 
-  const thStyle = {
-    textAlign: 'left',
+  const thStyle: React.CSSProperties = {
+    textAlign: 'left' as const,
     borderBottom: `1px solid ${palette.tableBorder}`,
     color: palette.text,
     background: palette.tableBg,
     padding: '8px 6px'
   };
 
-  const tdStyle = {
+  const tdStyle: React.CSSProperties = {
     color: palette.text,
     background: palette.tableBg,
     borderBottom: `1px solid ${palette.tableBorder}`,

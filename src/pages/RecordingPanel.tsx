@@ -22,14 +22,23 @@ function formatBytes(bytes: number) {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
+// Unified member type for dropdown
+type Member = {
+  id: string;
+  name?: string;
+  email?: string;
+  sparky_username?: string;
+  source: 'client' | 'profile';
+};
+
 const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, onStartLiveScreen }) => {
   const [memberMode, setMemberMode] = useState<'existing' | 'new'>('existing');
   const [search, setSearch] = useState('');
   const [clientId, setClientId] = useState<string | null>(() => localStorage.getItem('lastMemberId') || null);
-  const [clientSuggestions, setClientSuggestions] = useState<Array<{ id: string; name?: string; email?: string; sparky_username?: string }>>([]);
+  const [allMembers, setAllMembers] = useState<Member[]>([]);
+  const [filteredMembers, setFilteredMembers] = useState<Member[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
-  const [searchDebounced, setSearchDebounced] = useState('');
   const [newFirstName, setNewFirstName] = useState('');
   const [newLastName, setNewLastName] = useState('');
   const [newEmail, setNewEmail] = useState('');
@@ -64,135 +73,81 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
   // Output volume meter state
   const [outputVolume, setOutputVolume] = useState(0);
 
-  // Input volume meter effect
+  // Fetch all clients and profiles once on mount
   useEffect(() => {
-    let cancelled = false;
-    async function setupVolumeMeter() {
-      if (!selectedMic) return;
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
-        audioContextRef.current = null;
-      }
-      if (micStreamRef.current) {
-        micStreamRef.current.getTracks().forEach(track => track.stop());
-        micStreamRef.current = null;
-      }
+    async function fetchAllMembers() {
+      setSuggestionsLoading(true);
+      setSuggestionsError(null);
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: selectedMic === 'bluetooth'
-            ? { deviceId: { exact: (inputs.find(d => d.label.toLowerCase().includes('bluetooth'))?.deviceId || '') } }
-            : selectedMic
-              ? { deviceId: { exact: selectedMic } }
-              : true
-        });
-        micStreamRef.current = stream;
-        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        audioContextRef.current = audioCtx;
-        const source = audioCtx.createMediaStreamSource(stream);
-        const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 256;
-        analyserRef.current = analyser;
-        source.connect(analyser);
-
-        const dataArray = new Uint8Array(analyser.frequencyBinCount);
-
-        function updateVolume() {
-          if (cancelled) return;
-          analyser.getByteTimeDomainData(dataArray);
-          let sum = 0;
-          for (let i = 0; i < dataArray.length; i++) {
-            const val = (dataArray[i] - 128) / 128;
-            sum += val * val;
-          }
-          const rms = Math.sqrt(sum / dataArray.length);
-          setVolume(rms);
-          volumeAnimationRef.current = requestAnimationFrame(updateVolume);
+        // Fetch clients and profiles separately to avoid Promise.all error masking
+        const clientsRes = await supabase.from('clients').select('id, name, email, sparky_username');
+        // Remove username from select for profiles
+        const profilesRes = await supabase.from('profiles').select('id, display_name, email');
+        let clients: any[] = [];
+        let profiles: any[] = [];
+        let errorMsg = '';
+        if (clientsRes.error) errorMsg += 'Clients: ' + clientsRes.error.message + '. ';
+        if (profilesRes.error) errorMsg += 'Profiles: ' + profilesRes.error.message + '. ';
+        if (errorMsg) {
+          setSuggestionsError('Error loading members. ' + errorMsg);
+          setAllMembers([]);
+        } else {
+          clients = clientsRes.data || [];
+          profiles = profilesRes.data || [];
+          const clientMembers: Member[] = clients.map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            email: c.email,
+            sparky_username: c.sparky_username,
+            source: 'client'
+          }));
+          const profileMembers: Member[] = profiles.map((p: any) => ({
+            id: p.id,
+            name: p.display_name,
+            email: p.email,
+            sparky_username: undefined,
+            source: 'profile'
+          }));
+          // Remove duplicates by id, prefer client over profile if both exist
+          const all = [
+            ...clientMembers,
+            ...profileMembers.filter(p => !clientMembers.some(c => c.id === p.id))
+          ];
+          // Sort by name/email/username
+          all.sort((a, b) => {
+            const aStr = (a.name || a.email || a.sparky_username || '').toLowerCase();
+            const bStr = (b.name || b.email || b.sparky_username || '').toLowerCase();
+            return aStr.localeCompare(bStr);
+          });
+          setAllMembers(all);
         }
-        updateVolume();
-      } catch {
-        setVolume(0);
+      } catch (err: any) {
+        setSuggestionsError('Error loading members. ' + (err?.message || String(err)));
+        setAllMembers([]);
+      } finally {
+        setSuggestionsLoading(false);
       }
     }
-    setupVolumeMeter();
-    return () => {
-      cancelled = true;
-      if (volumeAnimationRef.current) cancelAnimationFrame(volumeAnimationRef.current);
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
-        audioContextRef.current = null;
-      }
-      if (micStreamRef.current) {
-        micStreamRef.current.getTracks().forEach(track => track.stop());
-        micStreamRef.current = null;
-      }
-    };
-    // eslint-disable-next-line
-  }, [selectedMic, inputs]);
+    fetchAllMembers();
+  }, []);
 
-  // Output volume meter effect (show output meter only during recording)
+  // Filter allMembers in-memory for suggestions (quick filter)
   useEffect(() => {
-    let cancelled = false;
-    let audioCtx: AudioContext | null = null;
-    let analyser: AnalyserNode | null = null;
-    let source: MediaStreamAudioSourceNode | null = null;
-    let animationId: number | null = null;
-    let stream: MediaStream | null = null;
-
-    async function setupOutputVolumeMeter() {
-      if (!recording || !liveStream) {
-        setOutputVolume(0);
-        return;
-      }
-      try {
-        // Try to get the output audio track from the liveStream (system+mic mixed)
-        const audioTracks = liveStream.getAudioTracks();
-        if (audioTracks.length === 0) {
-          setOutputVolume(0);
-          return;
-        }
-        stream = new MediaStream([audioTracks[0]]);
-        audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 256;
-        source = audioCtx.createMediaStreamSource(stream);
-        source.connect(analyser);
-
-        const dataArray = new Uint8Array(analyser.frequencyBinCount);
-
-        function updateOutputVolume() {
-          if (cancelled) return;
-          analyser!.getByteTimeDomainData(dataArray);
-          let sum = 0;
-          for (let i = 0; i < dataArray.length; i++) {
-            const val = (dataArray[i] - 128) / 128;
-            sum += val * val;
-          }
-          const rms = Math.sqrt(sum / dataArray.length);
-          setOutputVolume(rms);
-          animationId = requestAnimationFrame(updateOutputVolume);
-        }
-        updateOutputVolume();
-      } catch {
-        setOutputVolume(0);
-      }
+    if (memberMode !== 'existing') return;
+    const lower = search.trim().toLowerCase();
+    if (!lower) {
+      setFilteredMembers(allMembers);
+      return;
     }
-
-    setupOutputVolumeMeter();
-
-    return () => {
-      cancelled = true;
-      if (animationId) cancelAnimationFrame(animationId);
-      if (audioCtx) audioCtx.close();
-      if (stream) stream.getTracks().forEach(track => track.stop());
-    };
-  }, [recording, liveStream]);
-
-  useEffect(() => {
-    localStorage.setItem('selectedMic', selectedMic);
-  }, [selectedMic]);
-  useEffect(() => {
-    localStorage.setItem('selectedOutput', selectedOutput);
-  }, [selectedOutput]);
+    // Only match at the start of name, email, or username (not anywhere in the string)
+    setFilteredMembers(
+      allMembers.filter(member =>
+        (member.name && member.name.toLowerCase().startsWith(lower)) ||
+        (member.email && member.email.toLowerCase().startsWith(lower)) ||
+        (member.sparky_username && member.sparky_username.toLowerCase().startsWith(lower))
+      )
+    );
+  }, [search, memberMode, allMembers]);
 
   useEffect(() => {
     if (memberMode === 'new') {
@@ -204,52 +159,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
       setNewMemberError(null);
     }
   }, [memberMode]);
-
-  useEffect(() => {
-    if (memberMode !== 'existing') return;
-    const handler = setTimeout(() => {
-      setSearchDebounced(search);
-    }, 250);
-    return () => clearTimeout(handler);
-  }, [search, memberMode]);
-
-  useEffect(() => {
-    if (memberMode !== 'existing') return;
-    let active = true;
-    if (searchDebounced.trim().length < 1) {
-      setClientSuggestions([]);
-      setSuggestionsLoading(false);
-      setSuggestionsError(null);
-      return;
-    }
-    setSuggestionsLoading(true);
-    setSuggestionsError(null);
-    (async () => {
-      try {
-        let data, error;
-        ({ data, error } = await supabase
-          .from('clients')
-          .select('id, name, email, sparky_username')
-          .or(`name.ilike.%${searchDebounced.trim()}%,email.ilike.%${searchDebounced.trim()}%,sparky_username.ilike.%${searchDebounced.trim()}%`)
-          .order('name', { ascending: true })
-          .limit(10));
-        if (!active) return;
-        if (error) {
-          setSuggestionsError('Error searching members.');
-          setClientSuggestions([]);
-        } else {
-          setClientSuggestions(data || []);
-        }
-      } catch (err) {
-        if (!active) return;
-        setSuggestionsError('Error searching members.');
-        setClientSuggestions([]);
-      } finally {
-        if (active) setSuggestionsLoading(false);
-      }
-    })();
-    return () => { active = false; };
-  }, [searchDebounced, memberMode]);
 
   useEffect(() => {
     navigator.mediaDevices.getUserMedia({ audio: true })
@@ -452,8 +361,9 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         return;
       }
       try {
-        const { data, error } = await supabase.from('clients').select('id').eq('id', clientId).single();
-        if (error || !data) {
+        // Accept both clients and profiles as valid
+        const found = allMembers.find(m => m.id === clientId);
+        if (!found) {
           setRecordingError('Selected member does not exist.');
           localStorage.removeItem('lastMemberId');
           setClientId(null);
@@ -544,11 +454,10 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
     }
   };
 
-  // --- FIX: Make member selection work by setting clientId when user clicks a suggestion ---
-  const handleSuggestionClick = (client: { id: string; name?: string; email?: string; sparky_username?: string }) => {
-    setClientId(client.id);
-    localStorage.setItem('lastMemberId', client.id);
-    setSearch(client.name || client.email || client.sparky_username || '');
+  const handleSuggestionClick = (member: Member) => {
+    setClientId(member.id);
+    localStorage.setItem('lastMemberId', member.id);
+    setSearch(member.name || member.email || member.sparky_username || '');
   };
 
   return (
@@ -564,7 +473,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
           <option value="bluetooth">Bluetooth Audio</option>
           {inputs.map((input, idx) => (
             <option key={input.deviceId || idx} value={input.deviceId}>
-              {input.label || `Microphone ${idx+1}`}
+              {input.label || `Microphone ${idx + 1}`}
             </option>
           ))}
         </select>
@@ -722,52 +631,76 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
               </div>
               {memberMode === 'existing' && (
                 <div style={{ marginBottom: 16, width: '100%' }}>
-                  <label htmlFor="existing-member-search">Search Member:</label>
+                  <label htmlFor="existing-member-search">Quick Filter:</label>
                   <input
-                    id="existing-member-search"
                     type="text"
                     value={search}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      setSearch(e.target.value);
-                      setClientId(null);
-                    }}
-                    placeholder="Search by name or email"
-                    autoComplete="off"
+                    onChange={e => setSearch(e.target.value)}
+                    placeholder="Type to filter by name, email, or username"
                     style={{ width: '100%', marginBottom: 6 }}
                   />
-                  {/* Show suggestions as a clickable list */}
-                  {clientSuggestions.length > 0 && (
+                  {/* Suggestions dropdown */}
+                  {search.trim() && filteredMembers.length > 0 && (
                     <ul style={{
                       listStyle: 'none',
                       padding: 0,
-                      margin: '4px 0 0 0',
+                      margin: 0,
                       border: '1px solid #ccc',
-                      borderRadius: 4,
-                      background: '#fafbfc',
-                      maxHeight: 140,
-                      overflowY: 'auto'
+                      borderRadius: 6,
+                      maxHeight: 160,
+                      overflowY: 'auto',
+                      background: '#fff',
+                      position: 'absolute',
+                      width: 'calc(100% - 2px)',
+                      zIndex: 10
                     }}>
-                      {clientSuggestions.map((client: { id: string; name?: string; email?: string; sparky_username?: string }) => (
+                      {filteredMembers.map(member => (
                         <li
-                          key={client.id}
-                          onClick={() => handleSuggestionClick(client)}
+                          key={member.id}
+                          onClick={() => handleSuggestionClick(member)}
                           style={{
                             padding: '8px 12px',
                             cursor: 'pointer',
-                            background: clientId === client.id ? '#e3f2fd' : undefined,
-                            fontWeight: clientId === client.id ? 700 : 400
+                            borderBottom: '1px solid #eee',
+                            background: clientId === member.id ? '#e3f2fd' : '#fff'
                           }}
                         >
-                          {client.name || client.email || client.sparky_username || '(No Name)'}
-                          {client.email ? ` (${client.email})` : ''}
+                          {member.name || member.email || member.sparky_username || '(No Name)'}
+                          {member.email ? ` (${member.email})` : ''}
+                          {member.source === 'profile' ? ' [Admin]' : ''}
                         </li>
                       ))}
                     </ul>
                   )}
+                  {/* Fallback select for keyboard navigation or if no search */}
+                  {!search.trim() && (
+                    <>
+                      <label htmlFor="existing-member-dropdown">Select Member:</label>
+                      <select
+                        id="existing-member-dropdown"
+                        value={clientId || ''}
+                        onChange={e => {
+                          setClientId(e.target.value);
+                          const selected = allMembers.find(c => c.id === e.target.value);
+                          setSearch(selected?.name || selected?.email || selected?.sparky_username || '');
+                        }}
+                        style={{ width: '100%', marginBottom: 6 }}
+                      >
+                        <option value="">-- Select a member --</option>
+                        {filteredMembers.map(member => (
+                          <option key={member.id} value={member.id}>
+                            {member.name || member.email || member.sparky_username || '(No Name)'}
+                            {member.email ? ` (${member.email})` : ''}
+                            {member.source === 'profile' ? ' [Admin]' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  )}
                   {suggestionsError && (
                     <div style={{ color: 'red', fontSize: 13, marginTop: 4 }}>{suggestionsError}</div>
                   )}
-                  {search.trim().length >= 1 && !suggestionsLoading && clientSuggestions.length === 0 && !suggestionsError && (
+                  {filteredMembers.length === 0 && !suggestionsError && (
                     <div style={{ color: '#888', fontSize: 13, marginTop: 4 }}>No members found.</div>
                   )}
                 </div>

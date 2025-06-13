@@ -42,6 +42,18 @@ const UserDashboard: React.FC = () => {
     fetchDisplayName();
   }, [user]);
 
+  // Warn user before leaving if recording or liveStream is active
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (recording || liveStream) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [recording, liveStream]);
+
   const handleStartLiveScreen = (stream: MediaStream) => {
     setLiveStream(stream);
     setRecording(true);

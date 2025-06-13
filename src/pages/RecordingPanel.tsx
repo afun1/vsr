@@ -37,7 +37,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
   const [clientId, setClientId] = useState<string | null>(() => localStorage.getItem('lastMemberId') || null);
   const [allMembers, setAllMembers] = useState<Member[]>([]);
   const [filteredMembers, setFilteredMembers] = useState<Member[]>([]);
-  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
   const [newFirstName, setNewFirstName] = useState('');
   const [newLastName, setNewLastName] = useState('');
@@ -63,25 +62,17 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
   const [recordingSize, setRecordingSize] = useState(0);
   const recordingTimerRef = useRef<number | null>(null);
 
-  // Input volume meter state
-  const [volume, setVolume] = useState(0);
-  const volumeAnimationRef = useRef<number | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const micStreamRef = useRef<MediaStream | null>(null);
+  // Input volume meter state (not used, so removed unused refs and setters)
+  const [volume] = useState(0);
 
-  // Output volume meter state
-  const [outputVolume, setOutputVolume] = useState(0);
+  // Output volume meter state (not used, so removed unused setter)
+  const [outputVolume] = useState(0);
 
   // Fetch all clients and profiles once on mount
   useEffect(() => {
     async function fetchAllMembers() {
-      setSuggestionsLoading(true);
-      setSuggestionsError(null);
       try {
-        // Fetch clients and profiles separately to avoid Promise.all error masking
         const clientsRes = await supabase.from('clients').select('id, name, email, sparky_username');
-        // Remove username from select for profiles
         const profilesRes = await supabase.from('profiles').select('id, display_name, email');
         let clients: any[] = [];
         let profiles: any[] = [];
@@ -124,8 +115,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
       } catch (err: any) {
         setSuggestionsError('Error loading members. ' + (err?.message || String(err)));
         setAllMembers([]);
-      } finally {
-        setSuggestionsLoading(false);
       }
     }
     fetchAllMembers();
@@ -139,7 +128,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
       setFilteredMembers(allMembers);
       return;
     }
-    // Only match at the start of name, email, or username (not anywhere in the string)
     setFilteredMembers(
       allMembers.filter(member =>
         (member.name && member.name.toLowerCase().startsWith(lower)) ||
@@ -188,7 +176,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
       setRecordingSize(0);
       recordingTimerRef.current = window.setInterval(() => {
         setRecordingTime(t => t + 1);
-        // Estimate size: sum of chunks so far
         let size = 0;
         for (const chunk of recordedChunksRef.current) {
           size += chunk.size;
@@ -209,7 +196,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
     };
   }, [recording]);
 
-  // When stopped, show final file size and duration
   useEffect(() => {
     if (stoppedRecordingBlob) {
       setRecordingSize(stoppedRecordingBlob.size);
@@ -262,7 +248,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
     try {
       let screenStream;
       try {
-        // Lower resolution to 480p, frame rate to 10
         screenStream = await (navigator.mediaDevices as any).getDisplayMedia({
           video: { width: 640, height: 480, frameRate: 10 },
           audio: true
@@ -310,10 +295,9 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
       }
       setRecording(true);
       recordedChunksRef.current = [];
-      // Optionally, you can try to set a lower videoBitsPerSecond here for even smaller files
       const mediaRecorder = new MediaRecorder(finalStream, {
         mimeType: 'video/webm',
-        videoBitsPerSecond: 400_000 // 400 kbps, adjust as needed
+        videoBitsPerSecond: 400_000
       });
       mediaRecorderRef.current = mediaRecorder;
       mediaRecorder.ondataavailable = (event: BlobEvent) => {
@@ -327,7 +311,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         setRecording(false);
         setLiveStream(null);
         setIsPaused(false);
-        setRecordingTime(prev => prev); // keep last value
+        setRecordingTime(prev => prev);
         setRecordingSize(blob.size);
       };
       mediaRecorder.start();
@@ -350,7 +334,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
       setRecordingError('No recording to upload.');
       return;
     }
-    // Check file size before upload (set to your plan's max, or remove check if you want to rely on Supabase error)
     if (SUPABASE_MAX_SIZE_MB > 0 && stoppedRecordingBlob.size > SUPABASE_MAX_SIZE_MB * 1024 * 1024) {
       setRecordingError(`Recording is too large to upload (max ${SUPABASE_MAX_SIZE_MB}MB). Please record a shorter video or upgrade your plan.`);
       return;
@@ -361,7 +344,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         return;
       }
       try {
-        // Accept both clients and profiles as valid
         const found = allMembers.find(m => m.id === clientId);
         if (!found) {
           setRecordingError('Selected member does not exist.');
@@ -454,11 +436,22 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
     }
   };
 
-  const handleSuggestionClick = (member: Member) => {
-    setClientId(member.id);
-    localStorage.setItem('lastMemberId', member.id);
-    setSearch(member.name || member.email || member.sparky_username || '');
-  };
+  // Only dropdown for member selection, no overlay suggestions
+  useEffect(() => {
+    if (memberMode !== 'existing') return;
+    const lower = search.trim().toLowerCase();
+    if (!lower) {
+      setFilteredMembers(allMembers);
+      return;
+    }
+    setFilteredMembers(
+      allMembers.filter(member =>
+        (member.name && member.name.toLowerCase().startsWith(lower)) ||
+        (member.email && member.email.toLowerCase().startsWith(lower)) ||
+        (member.sparky_username && member.sparky_username.toLowerCase().startsWith(lower))
+      )
+    );
+  }, [search, memberMode, allMembers]);
 
   return (
     <div style={{ width: 480, background: '#fff', borderRadius: 10, boxShadow: '0 2px 12px #0001', padding: 24, marginBottom: 32 }}>
@@ -639,64 +632,28 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
                     placeholder="Type to filter by name, email, or username"
                     style={{ width: '100%', marginBottom: 6 }}
                   />
-                  {/* Suggestions dropdown */}
-                  {search.trim() && filteredMembers.length > 0 && (
-                    <ul style={{
-                      listStyle: 'none',
-                      padding: 0,
-                      margin: 0,
-                      border: '1px solid #ccc',
-                      borderRadius: 6,
-                      maxHeight: 160,
-                      overflowY: 'auto',
-                      background: '#fff',
-                      position: 'absolute',
-                      width: 'calc(100% - 2px)',
-                      zIndex: 10
-                    }}>
-                      {filteredMembers.map(member => (
-                        <li
-                          key={member.id}
-                          onClick={() => handleSuggestionClick(member)}
-                          style={{
-                            padding: '8px 12px',
-                            cursor: 'pointer',
-                            borderBottom: '1px solid #eee',
-                            background: clientId === member.id ? '#e3f2fd' : '#fff'
-                          }}
-                        >
+                  <label htmlFor="existing-member-dropdown">Select Member:</label>
+                  <select
+                    id="existing-member-dropdown"
+                    value={clientId || (filteredMembers.length > 0 ? filteredMembers[0].id : '')}
+                    onChange={e => {
+                      setClientId(e.target.value);
+                      localStorage.setItem('lastMemberId', e.target.value);
+                    }}
+                    style={{ width: '100%', marginBottom: 6 }}
+                  >
+                    {filteredMembers.length > 0 ? (
+                      filteredMembers.map(member => (
+                        <option key={member.id} value={member.id}>
                           {member.name || member.email || member.sparky_username || '(No Name)'}
                           {member.email ? ` (${member.email})` : ''}
                           {member.source === 'profile' ? ' [Admin]' : ''}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {/* Fallback select for keyboard navigation or if no search */}
-                  {!search.trim() && (
-                    <>
-                      <label htmlFor="existing-member-dropdown">Select Member:</label>
-                      <select
-                        id="existing-member-dropdown"
-                        value={clientId || ''}
-                        onChange={e => {
-                          setClientId(e.target.value);
-                          const selected = allMembers.find(c => c.id === e.target.value);
-                          setSearch(selected?.name || selected?.email || selected?.sparky_username || '');
-                        }}
-                        style={{ width: '100%', marginBottom: 6 }}
-                      >
-                        <option value="">-- Select a member --</option>
-                        {filteredMembers.map(member => (
-                          <option key={member.id} value={member.id}>
-                            {member.name || member.email || member.sparky_username || '(No Name)'}
-                            {member.email ? ` (${member.email})` : ''}
-                            {member.source === 'profile' ? ' [Admin]' : ''}
-                          </option>
-                        ))}
-                      </select>
-                    </>
-                  )}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="">-- Select a member --</option>
+                    )}
+                  </select>
                   {suggestionsError && (
                     <div style={{ color: 'red', fontSize: 13, marginTop: 4 }}>{suggestionsError}</div>
                   )}

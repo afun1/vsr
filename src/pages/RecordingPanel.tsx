@@ -7,6 +7,21 @@ interface RecordingPanelProps {
   onStartLiveScreen: (stream: MediaStream) => void;
 }
 
+const SUPABASE_MAX_SIZE_MB = 1024 * 5; // Set to 5GB (or your plan's max). Increase/decrease as needed.
+
+function formatDuration(seconds: number) {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
 const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, onStartLiveScreen }) => {
   const [memberMode, setMemberMode] = useState<'existing' | 'new'>('existing');
   const [search, setSearch] = useState('');
@@ -33,6 +48,11 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
   const [stoppedRecordingBlob, setStoppedRecordingBlob] = useState<Blob | null>(null);
   const [stoppedRecordingUrl, setStoppedRecordingUrl] = useState<string | null>(null);
   const [isPaused, setIsPaused] = useState(false);
+
+  // Recording time and size state
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [recordingSize, setRecordingSize] = useState(0);
+  const recordingTimerRef = useRef<number | null>(null);
 
   // Input volume meter state
   const [volume, setVolume] = useState(0);
@@ -252,6 +272,41 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
 
+  // Recording timer and size effect
+  useEffect(() => {
+    if (recording) {
+      setRecordingTime(0);
+      setRecordingSize(0);
+      recordingTimerRef.current = window.setInterval(() => {
+        setRecordingTime(t => t + 1);
+        // Estimate size: sum of chunks so far
+        let size = 0;
+        for (const chunk of recordedChunksRef.current) {
+          size += chunk.size;
+        }
+        setRecordingSize(size);
+      }, 1000);
+    } else {
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+    }
+    return () => {
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+    };
+  }, [recording]);
+
+  // When stopped, show final file size and duration
+  useEffect(() => {
+    if (stoppedRecordingBlob) {
+      setRecordingSize(stoppedRecordingBlob.size);
+    }
+  }, [stoppedRecordingBlob]);
+
   useEffect(() => {
     if (liveVideoRef.current && liveStream) {
       liveVideoRef.current.srcObject = liveStream;
@@ -293,10 +348,16 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
   const handleStartRecording = async () => {
     setRecordingError(null);
     setStoppedRecordingUrl(null);
+    setRecordingTime(0);
+    setRecordingSize(0);
     try {
       let screenStream;
       try {
-        screenStream = await (navigator.mediaDevices as any).getDisplayMedia({ video: true, audio: true });
+        // Lower resolution to 480p, frame rate to 10
+        screenStream = await (navigator.mediaDevices as any).getDisplayMedia({
+          video: { width: 640, height: 480, frameRate: 10 },
+          audio: true
+        });
       } catch (err) {
         setRecordingError('Screen capture was denied or failed. Please try again and allow screen sharing.');
         setRecording(false);
@@ -309,14 +370,14 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
       if (selectedMic === 'bluetooth') {
         const bluetoothDevice = inputs.find(d => d.label.toLowerCase().includes('bluetooth'));
         if (bluetoothDevice) {
-          micStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: bluetoothDevice.deviceId } } });
+          micStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: bluetoothDevice.deviceId }, channelCount: 1 } });
         } else {
-          micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          micStream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 } });
         }
       } else if (selectedMic) {
-        micStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: selectedMic } } });
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: selectedMic }, channelCount: 1 } });
       } else {
-        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 } });
       }
       let finalStream: MediaStream;
       if (screenStream.getAudioTracks().length > 0 && micStream && micStream.getAudioTracks().length > 0) {
@@ -340,7 +401,11 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
       }
       setRecording(true);
       recordedChunksRef.current = [];
-      const mediaRecorder = new MediaRecorder(finalStream, { mimeType: 'video/webm' });
+      // Optionally, you can try to set a lower videoBitsPerSecond here for even smaller files
+      const mediaRecorder = new MediaRecorder(finalStream, {
+        mimeType: 'video/webm',
+        videoBitsPerSecond: 400_000 // 400 kbps, adjust as needed
+      });
       mediaRecorderRef.current = mediaRecorder;
       mediaRecorder.ondataavailable = (event: BlobEvent) => {
         if (event.data.size > 0) recordedChunksRef.current.push(event.data);
@@ -353,6 +418,8 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         setRecording(false);
         setLiveStream(null);
         setIsPaused(false);
+        setRecordingTime(prev => prev); // keep last value
+        setRecordingSize(blob.size);
       };
       mediaRecorder.start();
       screenStream.getVideoTracks()[0].onended = () => {
@@ -372,6 +439,11 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
     let finalClientId = clientId;
     if (!stoppedRecordingBlob || !stoppedRecordingUrl) {
       setRecordingError('No recording to upload.');
+      return;
+    }
+    // Check file size before upload (set to your plan's max, or remove check if you want to rely on Supabase error)
+    if (SUPABASE_MAX_SIZE_MB > 0 && stoppedRecordingBlob.size > SUPABASE_MAX_SIZE_MB * 1024 * 1024) {
+      setRecordingError(`Recording is too large to upload (max ${SUPABASE_MAX_SIZE_MB}MB). Please record a shorter video or upgrade your plan.`);
       return;
     }
     if (memberMode === 'existing') {
@@ -472,6 +544,13 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
     }
   };
 
+  // --- FIX: Make member selection work by setting clientId when user clicks a suggestion ---
+  const handleSuggestionClick = (client: { id: string; name?: string; email?: string; sparky_username?: string }) => {
+    setClientId(client.id);
+    localStorage.setItem('lastMemberId', client.id);
+    setSearch(client.name || client.email || client.sparky_username || '');
+  };
+
   return (
     <div style={{ width: 480, background: '#fff', borderRadius: 10, boxShadow: '0 2px 12px #0001', padding: 24, marginBottom: 32 }}>
       <h3>New Recording</h3>
@@ -558,6 +637,18 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         {recording && liveStream ? (
           <>
             <video ref={liveVideoRef} style={{ width: 400, height: 220, borderRadius: 8, background: '#000', marginBottom: 24 }} autoPlay muted />
+            {/* Recording time and file size */}
+            <div style={{ display: 'flex', gap: 24, marginBottom: 12 }}>
+              <span style={{ fontWeight: 600, color: '#1976d2', fontSize: 16 }}>
+                Time: {formatDuration(recordingTime)}
+              </span>
+              <span style={{ fontWeight: 600, color: '#888', fontSize: 16 }}>
+                Size: {formatBytes(recordingSize)}
+              </span>
+              <span style={{ fontWeight: 600, color: '#888', fontSize: 16 }}>
+                Max: {SUPABASE_MAX_SIZE_MB} MB
+              </span>
+            </div>
             <div style={{ display: 'flex', flexDirection: 'row', gap: 16, marginBottom: 8 }}>
               {!isPaused ? (
                 <button
@@ -592,6 +683,18 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         ) : stoppedRecordingUrl ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
             <video src={stoppedRecordingUrl || undefined} controls style={{ width: 400, height: 220, borderRadius: 8, background: '#000', marginBottom: 24 }} />
+            {/* Show final time and file size */}
+            <div style={{ display: 'flex', gap: 24, marginBottom: 12 }}>
+              <span style={{ fontWeight: 600, color: '#1976d2', fontSize: 16 }}>
+                Time: {formatDuration(recordingTime)}
+              </span>
+              <span style={{ fontWeight: 600, color: '#888', fontSize: 16 }}>
+                Size: {formatBytes(recordingSize)}
+              </span>
+              <span style={{ fontWeight: 600, color: '#888', fontSize: 16 }}>
+                Max: {SUPABASE_MAX_SIZE_MB} MB
+              </span>
+            </div>
             <div style={{ width: '100%', maxWidth: 400, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <div style={{ display: 'flex', gap: 24, marginBottom: 12, marginTop: 0 }}>
                 <label style={{ fontWeight: 500 }}>
@@ -632,31 +735,34 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
                     autoComplete="off"
                     style={{ width: '100%', marginBottom: 6 }}
                   />
+                  {/* Show suggestions as a clickable list */}
                   {clientSuggestions.length > 0 && (
-                    <select
-                      value={clientId || ''}
-                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
-                        setClientId(e.target.value || null);
-                        if (e.target.value) {
-                          localStorage.setItem('lastMemberId', e.target.value);
-                          const selected = clientSuggestions.find((c: { id: string; name?: string; email?: string; sparky_username?: string }) => c.id === e.target.value);
-                          setSearch(selected ? (selected.name || selected.email || selected.sparky_username || '') : '');
-                        } else {
-                          localStorage.removeItem('lastMemberId');
-                          setSearch('');
-                        }
-                      }}
-                      style={{ width: '100%', padding: 8, borderRadius: 4, border: '1px solid #ccc', background: '#fafbfc', marginTop: 4 }}
-                      size={5}
-                    >
-                      <option value="">{suggestionsLoading ? 'Loading...' : 'Select a member'}</option>
+                    <ul style={{
+                      listStyle: 'none',
+                      padding: 0,
+                      margin: '4px 0 0 0',
+                      border: '1px solid #ccc',
+                      borderRadius: 4,
+                      background: '#fafbfc',
+                      maxHeight: 140,
+                      overflowY: 'auto'
+                    }}>
                       {clientSuggestions.map((client: { id: string; name?: string; email?: string; sparky_username?: string }) => (
-                        <option key={client.id} value={client.id}>
+                        <li
+                          key={client.id}
+                          onClick={() => handleSuggestionClick(client)}
+                          style={{
+                            padding: '8px 12px',
+                            cursor: 'pointer',
+                            background: clientId === client.id ? '#e3f2fd' : undefined,
+                            fontWeight: clientId === client.id ? 700 : 400
+                          }}
+                        >
                           {client.name || client.email || client.sparky_username || '(No Name)'}
                           {client.email ? ` (${client.email})` : ''}
-                        </option>
+                        </li>
                       ))}
-                    </select>
+                    </ul>
                   )}
                   {suggestionsError && (
                     <div style={{ color: 'red', fontSize: 13, marginTop: 4 }}>{suggestionsError}</div>

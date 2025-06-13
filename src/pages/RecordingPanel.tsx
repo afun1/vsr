@@ -43,11 +43,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
 
   // Output volume meter state
   const [outputVolume, setOutputVolume] = useState(0);
-  const outputAudioContextRef = useRef<AudioContext | null>(null);
-  const outputAnalyserRef = useRef<AnalyserNode | null>(null);
-  const outputSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const outputStreamRef = useRef<MediaStream | null>(null);
-  const outputAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // Input volume meter effect
   useEffect(() => {

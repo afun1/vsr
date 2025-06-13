@@ -34,7 +34,144 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
   const [stoppedRecordingUrl, setStoppedRecordingUrl] = useState<string | null>(null);
   const [isPaused, setIsPaused] = useState(false);
 
-  // Remember audio settings on change
+  // Input volume meter state
+  const [volume, setVolume] = useState(0);
+  const volumeAnimationRef = useRef<number | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
+
+  // Output volume meter state
+  const [outputVolume, setOutputVolume] = useState(0);
+  const outputAudioContextRef = useRef<AudioContext | null>(null);
+  const outputAnalyserRef = useRef<AnalyserNode | null>(null);
+  const outputSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const outputStreamRef = useRef<MediaStream | null>(null);
+  const outputAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Input volume meter effect
+  useEffect(() => {
+    let cancelled = false;
+    async function setupVolumeMeter() {
+      if (!selectedMic) return;
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+        audioContextRef.current = null;
+      }
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach(track => track.stop());
+        micStreamRef.current = null;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: selectedMic === 'bluetooth'
+            ? { deviceId: { exact: (inputs.find(d => d.label.toLowerCase().includes('bluetooth'))?.deviceId || '') } }
+            : selectedMic
+              ? { deviceId: { exact: selectedMic } }
+              : true
+        });
+        micStreamRef.current = stream;
+        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        audioContextRef.current = audioCtx;
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        analyserRef.current = analyser;
+        source.connect(analyser);
+
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+        function updateVolume() {
+          if (cancelled) return;
+          analyser.getByteTimeDomainData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) {
+            const val = (dataArray[i] - 128) / 128;
+            sum += val * val;
+          }
+          const rms = Math.sqrt(sum / dataArray.length);
+          setVolume(rms);
+          volumeAnimationRef.current = requestAnimationFrame(updateVolume);
+        }
+        updateVolume();
+      } catch {
+        setVolume(0);
+      }
+    }
+    setupVolumeMeter();
+    return () => {
+      cancelled = true;
+      if (volumeAnimationRef.current) cancelAnimationFrame(volumeAnimationRef.current);
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+        audioContextRef.current = null;
+      }
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach(track => track.stop());
+        micStreamRef.current = null;
+      }
+    };
+    // eslint-disable-next-line
+  }, [selectedMic, inputs]);
+
+  // Output volume meter effect (show output meter only during recording)
+  useEffect(() => {
+    let cancelled = false;
+    let audioCtx: AudioContext | null = null;
+    let analyser: AnalyserNode | null = null;
+    let source: MediaStreamAudioSourceNode | null = null;
+    let animationId: number | null = null;
+    let stream: MediaStream | null = null;
+
+    async function setupOutputVolumeMeter() {
+      if (!recording || !liveStream) {
+        setOutputVolume(0);
+        return;
+      }
+      try {
+        // Try to get the output audio track from the liveStream (system+mic mixed)
+        const audioTracks = liveStream.getAudioTracks();
+        if (audioTracks.length === 0) {
+          setOutputVolume(0);
+          return;
+        }
+        stream = new MediaStream([audioTracks[0]]);
+        audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        source = audioCtx.createMediaStreamSource(stream);
+        source.connect(analyser);
+
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+        function updateOutputVolume() {
+          if (cancelled) return;
+          analyser!.getByteTimeDomainData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) {
+            const val = (dataArray[i] - 128) / 128;
+            sum += val * val;
+          }
+          const rms = Math.sqrt(sum / dataArray.length);
+          setOutputVolume(rms);
+          animationId = requestAnimationFrame(updateOutputVolume);
+        }
+        updateOutputVolume();
+      } catch {
+        setOutputVolume(0);
+      }
+    }
+
+    setupOutputVolumeMeter();
+
+    return () => {
+      cancelled = true;
+      if (animationId) cancelAnimationFrame(animationId);
+      if (audioCtx) audioCtx.close();
+      if (stream) stream.getTracks().forEach(track => track.stop());
+    };
+  }, [recording, liveStream]);
+
   useEffect(() => {
     localStorage.setItem('selectedMic', selectedMic);
   }, [selectedMic]);
@@ -260,7 +397,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         return;
       }
     } else {
-      // Only require first name, last name, and username
       if (!newFirstName.trim() || !newLastName.trim() || !newUsername.trim()) {
         setNewMemberError('First name, last name, and username are required.');
         return;
@@ -268,7 +404,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
       setNewMemberError(null);
       setNewMemberLoading(true);
       try {
-        // Only include email if not blank
         const insertData: any = {
           name: `${newFirstName.trim()} ${newLastName.trim()}`,
           sparky_username: newUsername.trim(),
@@ -360,6 +495,29 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
           ))}
         </select>
       </div>
+      {/* Input Volume Meter */}
+      <div style={{ margin: '8px 0 16px 0', height: 24, display: 'flex', alignItems: 'center' }}>
+        <div style={{
+          width: 260,
+          height: 16,
+          background: '#eee',
+          borderRadius: 8,
+          overflow: 'hidden',
+          marginRight: 12,
+          border: '1px solid #ccc',
+          position: 'relative'
+        }}>
+          <div style={{
+            width: `${Math.min(100, Math.round(volume * 100 * 2))}%`,
+            height: '100%',
+            background: volume > 0.5 ? '#ff9800' : '#28a745',
+            transition: 'width 0.1s linear'
+          }} />
+        </div>
+        <span style={{ fontSize: 13, color: '#888' }}>
+          {volume > 0.01 ? 'Mic Active' : 'No Signal'}
+        </span>
+      </div>
       <div style={{ marginBottom: 16 }}>
         <label style={{ fontWeight: 600 }}>Speaker/Output Device:</label>
         <select
@@ -377,6 +535,30 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
           ))}
         </select>
       </div>
+      {/* Output Volume Meter */}
+      <div style={{ margin: '8px 0 16px 0', height: 24, display: 'flex', alignItems: 'center' }}>
+        <div style={{
+          width: 260,
+          height: 16,
+          background: '#eee',
+          borderRadius: 8,
+          overflow: 'hidden',
+          marginRight: 12,
+          border: '1px solid #ccc',
+          position: 'relative'
+        }}>
+          <div style={{
+            width: `${Math.min(100, Math.round(outputVolume * 100 * 2))}%`,
+            height: '100%',
+            background: outputVolume > 0.5 ? '#ff9800' : '#1976d2',
+            transition: 'width 0.1s linear'
+          }} />
+        </div>
+        <span style={{ fontSize: 13, color: '#888' }}>
+          {outputVolume > 0.01 ? 'Output Active' : 'No Signal'}
+        </span>
+      </div>
+      {/* Recording Controls */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 32 }}>
         {recording && liveStream ? (
           <>

@@ -4,11 +4,27 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../auth/supabaseClient';
 import Header from '../Header';
 
+// Dark mode detection
+const useDarkMode = () => {
+  const [dark, setDark] = useState(() =>
+    window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = (e: MediaQueryListEvent) => setDark(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  return dark;
+};
+
 const RECORDINGS_PER_PAGE_OPTIONS = [20, 40, 60, 80, 100];
 
 const AdminDashboard: React.FC = () => {
   const { user, role } = useAuth();
   const navigate = useNavigate();
+  const darkMode = useDarkMode();
+
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [userSearch, setUserSearch] = useState('');
@@ -225,121 +241,207 @@ const AdminDashboard: React.FC = () => {
   const memberPageCount = Math.max(1, Math.ceil(filteredMembers.length / membersPerPage));
   const pagedMembers = filteredMembers.slice((memberPage-1)*membersPerPage, memberPage*membersPerPage);
 
+  // Palette for dark/light mode
+  const palette = darkMode
+    ? {
+        bg: '#181a20',
+        card: '#23262f',
+        border: '#33384a',
+        text: '#e6e6e6',
+        textSecondary: '#b0b0b0',
+        accent: '#1976d2',
+        accent2: '#28a745',
+        accent3: '#e53935',
+        accent4: '#d81b60',
+        accent5: '#2d3a4a',
+        accent6: '#3a2d4a',
+        tableBg: '#23262f',
+        tableBorder: '#33384a',
+        inputBg: '#23262f',
+        inputText: '#e6e6e6',
+        inputBorder: '#33384a',
+        shadow: '0 2px 12px #0008',
+      }
+    : {
+        bg: '#fff',
+        card: '#f5f5f5',
+        border: '#eee',
+        text: '#222',
+        textSecondary: '#888',
+        accent: '#1976d2',
+        accent2: '#28a745',
+        accent3: '#e53935',
+        accent4: '#d81b60',
+        accent5: '#e3f2fd',
+        accent6: '#fce4ec',
+        tableBg: '#fff',
+        tableBorder: '#ccc',
+        inputBg: '#fff',
+        inputText: '#222',
+        inputBorder: '#ccc',
+        shadow: '0 2px 8px #0001',
+      };
+
+  // Helper styles
+  const inputStyle = {
+    background: palette.inputBg,
+    color: palette.inputText,
+    border: `1px solid ${palette.inputBorder}`,
+    borderRadius: 4,
+    padding: '6px 14px',
+    fontSize: 16,
+    outline: 'none',
+    transition: 'background 0.2s, color 0.2s, border 0.2s'
+  };
+
+  const tableStyle = {
+    width: '100%',
+    borderCollapse: 'collapse',
+    fontSize: 14,
+    background: palette.tableBg,
+    borderRadius: 8,
+    boxShadow: palette.shadow,
+    marginBottom: 24,
+    color: palette.text
+  };
+
+  const thStyle = {
+    textAlign: 'left',
+    borderBottom: `1px solid ${palette.tableBorder}`,
+    color: palette.text,
+    background: palette.tableBg,
+    padding: '8px 6px'
+  };
+
+  const tdStyle = {
+    color: palette.text,
+    background: palette.tableBg,
+    borderBottom: `1px solid ${palette.tableBorder}`,
+    padding: '8px 6px'
+  };
+
+  const secondaryText = { color: palette.textSecondary };
+
   return (
     <>
       <Header />
-      <div style={{ padding: 20, maxWidth: 1400, margin: '0 auto', paddingTop: 100 }}>
-        <h2>Admin Dashboard</h2>
+      <div
+        style={{
+          padding: 20,
+          maxWidth: 1400,
+          margin: '0 auto',
+          paddingTop: 100,
+          background: palette.bg,
+          color: palette.text,
+          minHeight: '100vh',
+          transition: 'background 0.2s,color 0.2s',
+        }}
+      >
+        {/* All panels and sections visible in both modes */}
+        <h2 style={{ color: palette.text }}>Admin Dashboard</h2>
         <div style={{ display: 'flex', gap: 32, marginBottom: 24 }}>
-          <div style={{ background: '#f5f5f5', borderRadius: 8, padding: 18, minWidth: 180, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: palette.card, borderRadius: 8, padding: 18, minWidth: 180, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxShadow: palette.shadow }}>
             <button
               onClick={() => navigate('/dashboard')}
-              style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '12px 28px', fontSize: 17, fontWeight: 600, marginBottom: 8 }}
+              style={{ background: palette.accent, color: '#fff', border: 'none', borderRadius: 4, padding: '12px 28px', fontSize: 17, fontWeight: 600, marginBottom: 8, boxShadow: palette.shadow }}
             >
               New Recording
             </button>
           </div>
-          <div style={{ background: '#f5f5f5', borderRadius: 8, padding: 18, minWidth: 180 }}>
-            <div style={{ fontSize: 15, color: '#888' }}>Total Users</div>
-            <div style={{ fontSize: 28, fontWeight: 700 }}>{analytics.userCount}</div>
+          <div style={{ background: palette.card, borderRadius: 8, padding: 18, minWidth: 180, boxShadow: palette.shadow }}>
+            <div style={{ fontSize: 15, ...secondaryText }}>Total Users</div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: palette.text }}>{analytics.userCount}</div>
           </div>
-          <div style={{ background: '#f5f5f5', borderRadius: 8, padding: 18, minWidth: 180 }}>
-            <div style={{ fontSize: 15, color: '#888' }}>Admins</div>
-            <div style={{ fontSize: 28, fontWeight: 700 }}>{analytics.adminCount}</div>
+          <div style={{ background: palette.card, borderRadius: 8, padding: 18, minWidth: 180, boxShadow: palette.shadow }}>
+            <div style={{ fontSize: 15, ...secondaryText }}>Admins</div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: palette.text }}>{analytics.adminCount}</div>
           </div>
-          <div style={{ background: '#f5f5f5', borderRadius: 8, padding: 18, minWidth: 180 }}>
-            <div style={{ fontSize: 15, color: '#888' }}>Total Members</div>
-            <div style={{ fontSize: 28, fontWeight: 700 }}>{analytics.userCount}</div>
+          <div style={{ background: palette.card, borderRadius: 8, padding: 18, minWidth: 180, boxShadow: palette.shadow }}>
+            <div style={{ fontSize: 15, ...secondaryText }}>Total Members</div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: palette.text }}>{analytics.userCount}</div>
           </div>
-          <div style={{ background: '#f5f5f5', borderRadius: 8, padding: 18, minWidth: 180 }}>
-            <div style={{ fontSize: 15, color: '#888' }}>Recordings</div>
-            <div style={{ fontSize: 28, fontWeight: 700 }}>{analytics.recordingCount}</div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, marginBottom: 24 }}>
-          <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 24 }}>
+          <div style={{ background: palette.card, borderRadius: 8, padding: 18, minWidth: 180, boxShadow: palette.shadow }}>
+            <div style={{ fontSize: 15, ...secondaryText }}>Recordings</div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: palette.text }}>{analytics.recordingCount}</div>
           </div>
         </div>
-        {lookupLoading && (
-          <div style={{ position: 'absolute', top: 44, left: 0, width: 340, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 11 }}>
-            <span style={{ color: '#1976d2', fontSize: 15, background: '#fff', borderRadius: 8, padding: '6px 0', width: '100%', textAlign: 'center' }}>Searching...</span>
-          </div>
-        )}
-        {lookupUserChoices.length > 0 && !lookupUser && !lookupLoading && (
-          <div style={{ position: 'absolute', top: 44, left: 0, background: '#fff', border: '1px solid #eee', borderRadius: 8, boxShadow: '0 2px 8px #0001', zIndex: 10, width: 340, maxHeight: 220, overflowY: 'auto' }}>
-            {lookupUserChoices.map(u => (
-              <div key={u.id} style={{ padding: '8px 14px', cursor: 'pointer', borderBottom: '1px solid #f5f5f5' }} onClick={() => handleSelectLookupUser(u)}>
-                <span style={{ fontWeight: 600 }}>{u.display_name || u.email}</span>
-                <span style={{ color: '#888', fontSize: 13, marginLeft: 8 }}>{u.email}</span>
-              </div>
-            ))}
-          </div>
-        )}
-        {lookupLoading && <div style={{ color: '#1976d2', marginBottom: 12 }}>Loading account...</div>}
-        {lookupError && <div style={{ color: '#e53935', marginBottom: 12 }}>{lookupError}</div>}
-        {lookupUser && (
-          <div style={{ background: '#f7f8fa', border: '1px solid #eee', borderRadius: 10, padding: 24, marginBottom: 32, maxWidth: 900, marginLeft: 'auto', marginRight: 'auto' }}>
-            <button onClick={() => { setLookupUser(null); setLookupInput(''); }} style={{ float: 'right', background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 16px', fontWeight: 600, marginBottom: 8 }}>Lookup Another User</button>
-            <h3 style={{ marginTop: 0, marginBottom: 12 }}>User Profile</h3>
-            <div style={{ display: 'flex', gap: 32, alignItems: 'center', marginBottom: 18 }}>
-              <div style={{ fontSize: 20, fontWeight: 700 }}>{lookupUser.display_name || lookupUser.email}</div>
-              <div style={{ color: '#888', fontSize: 15 }}>{lookupUser.email}</div>
-              <div style={{ color: '#888', fontSize: 15 }}>Role: <b>{lookupUser.role}</b></div>
-              <div style={{ color: '#888', fontSize: 15 }}>User ID: {lookupUser.id}</div>
+        {/* User Lookup */}
+        <div style={{ marginBottom: 24 }}>
+          <input
+            placeholder="Lookup user by email, name, username..."
+            autoComplete="off"
+            type="text"
+            value={lookupInput}
+            onChange={e => setLookupInput(e.target.value)}
+            style={{ ...inputStyle, width: 340, marginRight: 12 }}
+          />
+          {lookupLoading && (
+            <span style={{ color: palette.accent, fontSize: 15, background: palette.card, borderRadius: 8, padding: '6px 12px', marginLeft: 8 }}>Searching...</span>
+          )}
+          {lookupError && <span style={{ color: palette.accent3, marginLeft: 8 }}>{lookupError}</span>}
+          {lookupUserChoices.length > 0 && !lookupUser && !lookupLoading && (
+            <div style={{ position: 'absolute', background: palette.card, border: `1px solid ${palette.border}`, borderRadius: 8, boxShadow: palette.shadow, zIndex: 10, width: 340, maxHeight: 220, overflowY: 'auto', marginTop: 2 }}>
+              {lookupUserChoices.map(u => (
+                <div key={u.id} style={{ padding: '8px 14px', cursor: 'pointer', borderBottom: `1px solid ${palette.border}` }} onClick={() => handleSelectLookupUser(u)}>
+                  <span style={{ fontWeight: 600, color: palette.text }}>{u.display_name || u.email}</span>
+                  <span style={{ color: palette.textSecondary, fontSize: 13, marginLeft: 8 }}>{u.email}</span>
+                </div>
+              ))}
             </div>
-            <div style={{ color: '#888', fontSize: 14, marginBottom: 8 }}>Created: {lookupUser.created_at ? new Date(lookupUser.created_at).toLocaleString() : '-'}</div>
-            <div style={{ color: '#888', fontSize: 14, marginBottom: 18 }}>Last Updated: {lookupUser.updated_at ? new Date(lookupUser.updated_at).toLocaleString() : '-'}</div>
+          )}
+        </div>
+        {lookupUser && (
+          <div style={{ background: palette.card, border: `1px solid ${palette.border}`, borderRadius: 10, padding: 24, marginBottom: 32, maxWidth: 900, marginLeft: 'auto', marginRight: 'auto', color: palette.text }}>
+            <button onClick={() => { setLookupUser(null); setLookupInput(''); }} style={{ float: 'right', background: palette.accent, color: '#fff', border: 'none', borderRadius: 4, padding: '6px 16px', fontWeight: 600, marginBottom: 8 }}>Lookup Another User</button>
+            <h3 style={{ marginTop: 0, marginBottom: 12, color: palette.text }}>User Profile</h3>
+            <div style={{ display: 'flex', gap: 32, alignItems: 'center', marginBottom: 18 }}>
+              <div style={{ fontSize: 20, fontWeight: 700, color: palette.text }}>{lookupUser.display_name || lookupUser.email}</div>
+              <div style={{ color: palette.textSecondary, fontSize: 15 }}>{lookupUser.email}</div>
+              <div style={{ color: palette.textSecondary, fontSize: 15 }}>Role: <b>{lookupUser.role}</b></div>
+              <div style={{ color: palette.textSecondary, fontSize: 15 }}>User ID: {lookupUser.id}</div>
+            </div>
+            <div style={{ color: palette.textSecondary, fontSize: 14, marginBottom: 8 }}>Created: {lookupUser.created_at ? new Date(lookupUser.created_at).toLocaleString() : '-'}</div>
+            <div style={{ color: palette.textSecondary, fontSize: 14, marginBottom: 18 }}>Last Updated: {lookupUser.updated_at ? new Date(lookupUser.updated_at).toLocaleString() : '-'}</div>
             <div style={{ display: 'flex', gap: 32, marginBottom: 18 }}>
-              <div style={{ background: '#e3f2fd', borderRadius: 8, padding: '10px 18px', minWidth: 120, textAlign: 'center' }}>
-                <div style={{ fontSize: 15, color: '#1976d2' }}>Recordings</div>
+              <div style={{ background: palette.accent5, borderRadius: 8, padding: '10px 18px', minWidth: 120, textAlign: 'center', color: palette.text }}>
+                <div style={{ fontSize: 15, color: palette.accent }}>Recordings</div>
                 <div style={{ fontSize: 22, fontWeight: 700 }}>{lookupRecordings.length}</div>
               </div>
-              <div style={{ background: '#fce4ec', borderRadius: 8, padding: '10px 18px', minWidth: 120, textAlign: 'center' }}>
-                <div style={{ fontSize: 15, color: '#d81b60' }}>Audit Logs</div>
+              <div style={{ background: palette.accent6, borderRadius: 8, padding: '10px 18px', minWidth: 120, textAlign: 'center', color: palette.text }}>
+                <div style={{ fontSize: 15, color: palette.accent4 }}>Audit Logs</div>
                 <div style={{ fontSize: 22, fontWeight: 700 }}>{lookupLogs.length}</div>
               </div>
             </div>
-            <hr style={{ margin: '18px 0' }} />
-            <h4 style={{ marginBottom: 8 }}>All Recordings</h4>
-            {lookupRecordings.length === 0 && <div style={{ color: '#888', fontSize: 14 }}>No recordings found.</div>}
+            <hr style={{ margin: '18px 0', borderColor: palette.border }} />
+            <h4 style={{ marginBottom: 8, color: palette.text }}>All Recordings</h4>
+            {lookupRecordings.length === 0 && <div style={{ color: palette.textSecondary, fontSize: 14 }}>No recordings found.</div>}
             <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
               {lookupRecordings.map(r => (
-                <li key={r.id} style={{ borderBottom: '1px solid #eee', padding: '10px 0', marginBottom: 6 }}>
-                  <div style={{ fontWeight: 600, fontSize: 15 }}>Recording ID: {r.id}</div>
-                  <div style={{ color: '#888', fontSize: 13 }}>Created: {new Date(r.created_at).toLocaleString()}</div>
-                  <div style={{ color: '#888', fontSize: 13 }}>Client ID: {r.client_id}</div>
-                  <div style={{ color: '#888', fontSize: 13 }}>Video: {r.video_url ? <a href={r.video_url} target="_blank" rel="noopener noreferrer">{r.video_url}</a> : '-'}</div>
-                  <div style={{ color: '#888', fontSize: 13, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>Transcript: {r.transcript || '-'}</div>
+                <li key={r.id} style={{ borderBottom: `1px solid ${palette.border}`, padding: '10px 0', marginBottom: 6 }}>
+                  <div style={{ fontWeight: 600, fontSize: 15, color: palette.text }}>Recording ID: {r.id}</div>
+                  <div style={{ color: palette.textSecondary, fontSize: 13 }}>Created: {new Date(r.created_at).toLocaleString()}</div>
+                  <div style={{ color: palette.textSecondary, fontSize: 13 }}>Client ID: {r.client_id}</div>
+                  <div style={{ color: palette.textSecondary, fontSize: 13 }}>Video: {r.video_url ? <a href={r.video_url} target="_blank" rel="noopener noreferrer" style={{ color: palette.accent }}>{r.video_url}</a> : '-'}</div>
+                  <div style={{ color: palette.textSecondary, fontSize: 13, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>Transcript: {r.transcript || '-'}</div>
                 </li>
               ))}
             </ul>
-            <hr style={{ margin: '18px 0' }} />
-            <h4 style={{ marginBottom: 8 }}>All Audit Logs</h4>
-            {lookupLogs.length === 0 && <div style={{ color: '#888', fontSize: 14 }}>No audit logs found.</div>}
+            <hr style={{ margin: '18px 0', borderColor: palette.border }} />
+            <h4 style={{ marginBottom: 8, color: palette.text }}>All Audit Logs</h4>
+            {lookupLogs.length === 0 && <div style={{ color: palette.textSecondary, fontSize: 14 }}>No audit logs found.</div>}
             <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
               {lookupLogs.map(log => (
-                <li key={log.id} style={{ borderBottom: '1px solid #eee', padding: '8px 0', fontSize: 13, marginBottom: 4 }}>
-                  <strong>{log.action}</strong> on {log.target_type} {log.target_id} at {new Date(log.created_at).toLocaleString()}<br />
-                  <span style={{ color: '#555' }}>Details: {JSON.stringify(log.details)}</span>
+                <li key={log.id} style={{ borderBottom: `1px solid ${palette.border}`, padding: '8px 0', fontSize: 13, marginBottom: 4 }}>
+                  <strong style={{ color: palette.text }}>{log.action}</strong> on {log.target_type} {log.target_id} at {new Date(log.created_at).toLocaleString()}<br />
+                  <span style={{ color: palette.textSecondary }}>Details: {JSON.stringify(log.details)}</span>
                 </li>
               ))}
             </ul>
           </div>
         )}
-        {lookupUserChoices.length > 0 && !lookupUser && (
-          <div style={{ position: 'absolute', background: '#fff', border: '1px solid #eee', borderRadius: 8, boxShadow: '0 2px 8px #0001', zIndex: 10, width: 340, maxHeight: 220, overflowY: 'auto', marginTop: 2 }}>
-            {lookupUserChoices.map(u => (
-              <div key={u.id} style={{ padding: '8px 14px', cursor: 'pointer', borderBottom: '1px solid #f5f5f5' }} onClick={() => handleSelectLookupUser(u)}>
-                <span style={{ fontWeight: 600 }}>{u.display_name || u.email}</span>
-                <span style={{ color: '#888', fontSize: 13, marginLeft: 8 }}>{u.email}</span>
-              </div>
-            ))}
-          </div>
-        )}
-        <div style={{ display: 'flex', gap: 32, marginBottom: 24 }}>
-        </div>
-        <hr />
-        <h3>User Management</h3>
+        {/* User Management */}
+        <hr style={{ borderColor: palette.border }} />
+        <h3 style={{ color: palette.text }}>User Management</h3>
         <div style={{ marginBottom: 8, width: '100%' }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%' }}>
             <input
@@ -348,10 +450,10 @@ const AdminDashboard: React.FC = () => {
               type="text"
               value={userSearch}
               onChange={e => setUserSearch(e.target.value)}
-              style={{ fontSize: 16, padding: '6px 14px', width: 340 }}
+              style={{ ...inputStyle, width: 340 }}
             />
-            <button type="submit" style={{ background: 'rgb(25, 118, 210)', color: 'rgb(255, 255, 255)', border: 'none', borderRadius: 4, padding: '7px 18px', fontWeight: 600 }}>User Lookup</button>
-            <span style={{ color: '#888', fontSize: 15, marginLeft: 16 }}>
+            <button type="submit" style={{ background: palette.accent, color: '#fff', border: 'none', borderRadius: 4, padding: '7px 18px', fontWeight: 600 }}>User Lookup</button>
+            <span style={{ ...secondaryText, fontSize: 15, marginLeft: 16 }}>
               Files per page:
               <select
                 value={usersPerPage}
@@ -359,7 +461,7 @@ const AdminDashboard: React.FC = () => {
                   setUserPage(1);
                   setUsersPerPage(Number(e.target.value));
                 }}
-                style={{ marginLeft: 8, fontSize: 15, padding: '2px 8px' }}
+                style={{ marginLeft: 8, fontSize: 15, padding: '2px 8px', background: palette.inputBg, color: palette.inputText, border: `1px solid ${palette.inputBorder}` }}
               >
                 {RECORDINGS_PER_PAGE_OPTIONS.map(opt => (
                   <option key={opt} value={opt}>{opt}</option>
@@ -367,62 +469,63 @@ const AdminDashboard: React.FC = () => {
               </select>
             </span>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flex: 1 }}>
-              <button onClick={handleBulkPromoteUsers} disabled={selectedUserIds.length === 0} style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>Promote to Admin</button>
-              <button onClick={() => exportCSV(filteredUsers, ['id','email','display_name','role'], 'users.csv')} style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>Export Users CSV</button>
-              <button onClick={handleBulkDeleteUsers} disabled={selectedUserIds.length === 0} style={{ background: '#e53935', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>Delete Selected</button>
+              <button onClick={handleBulkPromoteUsers} disabled={selectedUserIds.length === 0} style={{ background: palette.accent, color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>Promote to Admin</button>
+              <button onClick={() => exportCSV(filteredUsers, ['id','email','display_name','role'], 'users.csv')} style={{ background: palette.accent, color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>Export Users CSV</button>
+              <button onClick={handleBulkDeleteUsers} disabled={selectedUserIds.length === 0} style={{ background: palette.accent3, color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>Delete Selected</button>
             </div>
           </div>
         </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px #0001', marginBottom: 24 }}>
+        <table style={tableStyle}>
           <thead>
             <tr>
-              <th><input type="checkbox" checked={filteredUsers.length > 0 && filteredUsers.slice((userPage-1)*usersPerPage, userPage*usersPerPage).every(u => selectedUserIds.includes(u.id))} onChange={e => setSelectedUserIds(e.target.checked ? filteredUsers.slice((userPage-1)*usersPerPage, userPage*usersPerPage).map(u => u.id) : [])} /></th>
-              <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Email</th>
-              <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Display Name</th>
-              <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Role</th>
-              <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Change Role</th>
-              <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Active</th>
-              <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Actions</th>
+              <th style={thStyle}><input type="checkbox" checked={filteredUsers.length > 0 && filteredUsers.slice((userPage-1)*usersPerPage, userPage*usersPerPage).every(u => selectedUserIds.includes(u.id))} onChange={e => setSelectedUserIds(e.target.checked ? filteredUsers.slice((userPage-1)*usersPerPage, userPage*usersPerPage).map(u => u.id) : [])} /></th>
+              <th style={thStyle}>Email</th>
+              <th style={thStyle}>Display Name</th>
+              <th style={thStyle}>Role</th>
+              <th style={thStyle}>Change Role</th>
+              <th style={thStyle}>Active</th>
+              <th style={thStyle}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {filteredUsers.slice((userPage-1)*usersPerPage, userPage*usersPerPage).map(u => (
               <tr key={u.id}>
-                <td><input type="checkbox" checked={selectedUserIds.includes(u.id)} onChange={e => setSelectedUserIds(e.target.checked ? [...selectedUserIds, u.id] : selectedUserIds.filter(id => id !== u.id))} /></td>
-                <td>
+                <td style={tdStyle}><input type="checkbox" checked={selectedUserIds.includes(u.id)} onChange={e => setSelectedUserIds(e.target.checked ? [...selectedUserIds, u.id] : selectedUserIds.filter(id => id !== u.id))} /></td>
+                <td style={tdStyle}>
                   {editingUserId === u.id ? (
-                    <input value={editEmail} onChange={e => setEditEmail(e.target.value)} style={{ width: 180 }} />
+                    <input value={editEmail} onChange={e => setEditEmail(e.target.value)} style={{ ...inputStyle, width: 180 }} />
                   ) : (
                     u.email
                   )}
                 </td>
-                <td>
+                <td style={tdStyle}>
                   {editingUserId === u.id ? (
-                    <input value={editDisplayName} onChange={e => setEditDisplayName(e.target.value)} style={{ width: 140 }} />
+                    <input value={editDisplayName} onChange={e => setEditDisplayName(e.target.value)} style={{ ...inputStyle, width: 140 }} />
                   ) : (
                     u.display_name || '-'
                   )}
                 </td>
-                <td>{u.role}</td>
-                <td>
+                <td style={tdStyle}>{u.role}</td>
+                <td style={tdStyle}>
                   <select
                     value={u.role}
                     onChange={e => handleRoleChange(u.id, e.target.value)}
                     disabled={u.id === user}
+                    style={{ ...inputStyle, width: 90, padding: '4px 8px', fontSize: 14 }}
                   >
                     <option value="user">user</option>
                     <option value="admin">admin</option>
                   </select>
                 </td>
-                <td>
+                <td style={tdStyle}>
                   <button
                     onClick={() => handleUserActive(u.id, !(u.notifications_enabled ?? true))}
-                    style={{ background: (u.notifications_enabled ?? true) ? '#28a745' : '#e53935', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 13 }}
+                    style={{ background: (u.notifications_enabled ?? true) ? palette.accent2 : palette.accent3, color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 13 }}
                   >
                     {(u.notifications_enabled ?? true) ? 'Active' : 'Inactive'}
                   </button>
                 </td>
-                <td>
+                <td style={tdStyle}>
                   {editingUserId === u.id ? (
                     <>
                       <button onClick={() => handleSaveUserEdit(u.id)} style={{ marginRight: 6 }}>Save</button>
@@ -451,7 +554,7 @@ const AdminDashboard: React.FC = () => {
                 if (userPage > 1) setUserPage(p => Math.max(1, p - 1));
               }}
               style={{
-                color: userPage === 1 ? '#888' : '#1976d2',
+                color: userPage === 1 ? palette.textSecondary : palette.accent,
                 textDecoration: 'underline',
                 pointerEvents: userPage === 1 ? 'none' : 'auto',
                 fontWeight: 600,
@@ -469,7 +572,7 @@ const AdminDashboard: React.FC = () => {
                   setUserPage(i + 1);
                 }}
                 style={{
-                  color: userPage === i + 1 ? '#28a745' : '#1976d2',
+                  color: userPage === i + 1 ? palette.accent2 : palette.accent,
                   textDecoration: 'underline',
                   fontWeight: userPage === i + 1 ? 700 : 600,
                   marginRight: 12
@@ -485,7 +588,7 @@ const AdminDashboard: React.FC = () => {
                 if (userPage < userPageCount) setUserPage(p => Math.min(userPageCount, p + 1));
               }}
               style={{
-                color: userPage === userPageCount ? '#888' : '#1976d2',
+                color: userPage === userPageCount ? palette.textSecondary : palette.accent,
                 textDecoration: 'underline',
                 pointerEvents: userPage === userPageCount ? 'none' : 'auto',
                 fontWeight: 600
@@ -495,8 +598,9 @@ const AdminDashboard: React.FC = () => {
             </a>
           </div>
         </div>
-        <hr />
-        <h3>Member Management</h3>
+        {/* Member Management */}
+        <hr style={{ borderColor: palette.border }} />
+        <h3 style={{ color: palette.text }}>Member Management</h3>
         <div style={{ marginBottom: 8, width: '100%' }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%' }}>
             <input
@@ -505,10 +609,10 @@ const AdminDashboard: React.FC = () => {
               type="text"
               value={memberSearch}
               onChange={e => setMemberSearch(e.target.value)}
-              style={{ fontSize: 16, padding: '6px 14px', width: 340 }}
+              style={{ ...inputStyle, width: 340 }}
             />
-            <button type="submit" style={{ background: 'rgb(25, 118, 210)', color: 'rgb(255, 255, 255)', border: 'none', borderRadius: 4, padding: '7px 18px', fontWeight: 600 }}>Member Lookup</button>
-            <span style={{ color: '#888', fontSize: 15, marginLeft: 16 }}>
+            <button type="submit" style={{ background: palette.accent, color: '#fff', border: 'none', borderRadius: 4, padding: '7px 18px', fontWeight: 600 }}>Member Lookup</button>
+            <span style={{ ...secondaryText, fontSize: 15, marginLeft: 16 }}>
               Files per page:
               <select
                 value={membersPerPage}
@@ -516,7 +620,7 @@ const AdminDashboard: React.FC = () => {
                   setMemberPage(1);
                   setMembersPerPage(Number(e.target.value));
                 }}
-                style={{ marginLeft: 8, fontSize: 15, padding: '2px 8px' }}
+                style={{ marginLeft: 8, fontSize: 15, padding: '2px 8px', background: palette.inputBg, color: palette.inputText, border: `1px solid ${palette.inputBorder}` }}
               >
                 {RECORDINGS_PER_PAGE_OPTIONS.map(opt => (
                   <option key={opt} value={opt}>{opt}</option>
@@ -524,30 +628,30 @@ const AdminDashboard: React.FC = () => {
               </select>
             </span>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flex: 1 }}>
-              <button onClick={() => exportMembersCSV(filteredMembers, ['id','email','name','first_name','last_name','created_at'], 'members.csv')} style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>Export Members CSV</button>
-              <button onClick={handleBulkDeleteMembers} disabled={selectedMemberIds.length === 0} style={{ background: '#e53935', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>Delete Selected</button>
+              <button onClick={() => exportMembersCSV(filteredMembers, ['id','email','name','first_name','last_name','created_at'], 'members.csv')} style={{ background: palette.accent, color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>Export Members CSV</button>
+              <button onClick={handleBulkDeleteMembers} disabled={selectedMemberIds.length === 0} style={{ background: palette.accent3, color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontWeight: 600 }}>Delete Selected</button>
             </div>
           </div>
         </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px #0001', marginBottom: 24 }}>
+        <table style={tableStyle}>
           <thead>
             <tr>
-              <th><input type="checkbox" checked={pagedMembers.length > 0 && pagedMembers.every(m => selectedMemberIds.includes(m.id))} onChange={e => setSelectedMemberIds(e.target.checked ? pagedMembers.map(m => m.id) : [])} /></th>
-              <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Email</th>
-              <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Name</th>
-              <th style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>Created At</th>
+              <th style={thStyle}><input type="checkbox" checked={pagedMembers.length > 0 && pagedMembers.every(m => selectedMemberIds.includes(m.id))} onChange={e => setSelectedMemberIds(e.target.checked ? pagedMembers.map(m => m.id) : [])} /></th>
+              <th style={thStyle}>Email</th>
+              <th style={thStyle}>Name</th>
+              <th style={thStyle}>Created At</th>
             </tr>
           </thead>
           <tbody>
             {pagedMembers.length === 0 ? (
-              <tr><td colSpan={3} style={{ textAlign: 'center', color: '#888' }}>No members found.</td></tr>
+              <tr><td colSpan={3} style={{ textAlign: 'center', ...secondaryText }}>No members found.</td></tr>
             ) : (
               pagedMembers.map(m => (
                 <tr key={m.id}>
-                  <td><input type="checkbox" checked={selectedMemberIds.includes(m.id)} onChange={e => setSelectedMemberIds(e.target.checked ? [...selectedMemberIds, m.id] : selectedMemberIds.filter(id => id !== m.id))} /></td>
-                  <td>{m.email}</td>
-                  <td>{m.name || `${m.first_name || ''} ${m.last_name || ''}`}</td>
-                  <td>{m.created_at ? new Date(m.created_at).toLocaleString() : '-'}</td>
+                  <td style={tdStyle}><input type="checkbox" checked={selectedMemberIds.includes(m.id)} onChange={e => setSelectedMemberIds(e.target.checked ? [...selectedMemberIds, m.id] : selectedMemberIds.filter(id => id !== m.id))} /></td>
+                  <td style={tdStyle}>{m.email}</td>
+                  <td style={tdStyle}>{m.name || `${m.first_name || ''} ${m.last_name || ''}`}</td>
+                  <td style={tdStyle}>{m.created_at ? new Date(m.created_at).toLocaleString() : '-'}</td>
                 </tr>
               ))
             )}
@@ -562,7 +666,7 @@ const AdminDashboard: React.FC = () => {
                 if (memberPage > 1) setMemberPage(p => Math.max(1, p - 1));
               }}
               style={{
-                color: memberPage === 1 ? '#888' : '#1976d2',
+                color: memberPage === 1 ? palette.textSecondary : palette.accent,
                 textDecoration: 'underline',
                 pointerEvents: memberPage === 1 ? 'none' : 'auto',
                 fontWeight: 600,
@@ -580,7 +684,7 @@ const AdminDashboard: React.FC = () => {
                   setMemberPage(i + 1);
                 }}
                 style={{
-                  color: memberPage === i + 1 ? '#28a745' : '#1976d2',
+                  color: memberPage === i + 1 ? palette.accent2 : palette.accent,
                   textDecoration: 'underline',
                   fontWeight: memberPage === i + 1 ? 700 : 600,
                   marginRight: 12
@@ -596,7 +700,7 @@ const AdminDashboard: React.FC = () => {
                 if (memberPage < memberPageCount) setMemberPage(p => Math.min(memberPageCount, p + 1));
               }}
               style={{
-                color: memberPage === memberPageCount ? '#888' : '#1976d2',
+                color: memberPage === memberPageCount ? palette.textSecondary : palette.accent,
                 textDecoration: 'underline',
                 pointerEvents: memberPage === memberPageCount ? 'none' : 'auto',
                 fontWeight: 600
@@ -606,15 +710,16 @@ const AdminDashboard: React.FC = () => {
             </a>
           </div>
         </div>
-        <hr />
-        <h3>Audit Logs</h3>
+        {/* Audit Logs */}
+        <hr style={{ borderColor: palette.border }} />
+        <h3 style={{ color: palette.text }}>Audit Logs</h3>
         <div style={{ marginBottom: 10 }}>
           <input
             type="text"
             placeholder="Search audit logs..."
             value={auditLogSearch}
             onChange={e => setAuditLogSearch(e.target.value)}
-            style={{ fontSize: 15, padding: '4px 10px', width: 320 }}
+            style={{ ...inputStyle, fontSize: 15, width: 320 }}
           />
         </div>
         <ul style={{ marginTop: 24, padding: 0, listStyle: 'none' }}>
@@ -630,11 +735,11 @@ const AdminDashboard: React.FC = () => {
               );
             })
             .map((log) => (
-              <li key={log.id} style={{ marginBottom: 8, fontSize: 13, borderBottom: '1px solid #eee', paddingBottom: 4 }}>
-                <strong>{log.action}</strong> by <span style={{ color: '#1976d2' }}>{log.user_id}</span> on {log.target_type} {log.target_id} <br />
-                <span style={{ color: '#888' }}>{log.created_at}</span>
+              <li key={log.id} style={{ marginBottom: 8, fontSize: 13, borderBottom: `1px solid ${palette.border}`, paddingBottom: 4, color: palette.text }}>
+                <strong style={{ color: palette.text }}>{log.action}</strong> by <span style={{ color: palette.accent }}>{log.user_id}</span> on {log.target_type} {log.target_id} <br />
+                <span style={{ color: palette.textSecondary }}>{log.created_at}</span>
                 {log.details && (
-                  <pre style={{ background: '#f7f7fa', padding: 8, borderRadius: 4, marginTop: 4, fontSize: 12, color: '#333' }}>{JSON.stringify(log.details, null, 2)}</pre>
+                  <pre style={{ background: palette.card, padding: 8, borderRadius: 4, marginTop: 4, fontSize: 12, color: palette.text }}>{JSON.stringify(log.details, null, 2)}</pre>
                 )}
               </li>
             ))}

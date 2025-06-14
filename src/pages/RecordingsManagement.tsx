@@ -239,13 +239,8 @@ const RecordingsManagement: React.FC = () => {
           }}>
             <thead>
               <tr>
-                <th style={{ background: palette.tableBg, borderBottom: `1px solid ${palette.tableBorder}` }}>
-                  <input
-                    type="checkbox"
-                    checked={pagedRecordings.length > 0 && pagedRecordings.every(r => selectedRecordingIds.includes(r.id))}
-                    onChange={e => setSelectedRecordingIds(e.target.checked ? pagedRecordings.map(r => r.id) : [])}
-                  />
-                </th>
+                {/* Removed Select All checkbox */}
+                <th style={{ background: palette.tableBg, borderBottom: `1px solid ${palette.tableBorder}` }}></th>
                 <th style={{ textAlign: 'left', borderBottom: `1px solid ${palette.tableBorder}` }}>Title</th>
                 <th style={{ textAlign: 'left', borderBottom: `1px solid ${palette.tableBorder}` }}>Play / URL</th>
                 <th style={{ textAlign: 'left', borderBottom: `1px solid ${palette.tableBorder}` }}>Transcript</th>

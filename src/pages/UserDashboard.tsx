@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { supabase } from '../auth/supabaseClient';
 import ScreenRecorder from './ScreenRecorder';
@@ -113,18 +113,22 @@ const UserDashboard: React.FC = () => {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [recording, liveStream]);
 
+  // --- Patch: disable unsaved changes warning after Save Details ---
+  // This callback will be passed to RecordingPanel and called after save
+  const handleSetRecordedVideoUrl = useCallback((url: string | null) => {
+    setRecordedVideoUrl(url);
+    if (url) {
+      setRecording(false);
+      setLiveStream(null);
+      window.dispatchEvent(new CustomEvent('sparky-auto-select-recording', { detail: url }));
+    }
+  }, []);
+
   const handleStartLiveScreen = (stream: MediaStream) => {
     setLiveStream(stream);
     setRecording(true);
     setRecordedVideoUrl(null);
     window.dispatchEvent(new CustomEvent('sparky-recording-visibility', { detail: true }));
-  };
-
-  const handleSetRecordedVideoUrl = (url: string | null) => {
-    setRecordedVideoUrl(url);
-    if (url) {
-      window.dispatchEvent(new CustomEvent('sparky-auto-select-recording', { detail: url }));
-    }
   };
 
   return (

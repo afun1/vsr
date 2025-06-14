@@ -229,6 +229,17 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
     );
   }, [search, memberMode, allMembers]);
 
+  // --- Fix: Set clientId to first filtered member if not set and there are members ---
+  useEffect(() => {
+    if (
+      memberMode === 'existing' &&
+      (!clientId || !filteredMembers.some(m => m.id === clientId)) &&
+      filteredMembers.length > 0
+    ) {
+      setClientId(filteredMembers[0].id);
+    }
+  }, [filteredMembers, memberMode, clientId]);
+
   useEffect(() => {
     if (memberMode === 'new') {
       setNewFirstName('');
@@ -640,7 +651,10 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
 
   const handleSaveRecordingDetails = async () => {
     setRecordingError(null);
-    let finalClientId = clientId;
+    let finalClientId = null;
+    let finalProfileId = null;
+    let selectedMember: Member | undefined = undefined;
+
     if (!stoppedRecordingBlob || !stoppedRecordingUrl) {
       setRecordingError('No recording to upload.');
       return;
@@ -655,12 +669,17 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         return;
       }
       try {
-        const found = allMembers.find(m => m.id === clientId);
-        if (!found) {
+        selectedMember = allMembers.find(m => m.id === clientId);
+        if (!selectedMember) {
           setRecordingError('Selected member does not exist.');
           if (typeof window !== 'undefined') localStorage.removeItem('lastMemberId');
           setClientId(null);
           return;
+        }
+        if (selectedMember.source === 'client') {
+          finalClientId = selectedMember.id;
+        } else if (selectedMember.source === 'profile') {
+          finalProfileId = selectedMember.id;
         }
       } catch (err) {
         setRecordingError('Error verifying member: ' + (err instanceof Error ? err.message : String(err)));
@@ -726,13 +745,18 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
       }
       const { data: publicUrlData } = supabase.storage.from('recordings').getPublicUrl(fileName);
       const videoPublicUrl = publicUrlData?.publicUrl;
-      const { data: insertData, error: dbError } = await supabase.from('recordings').insert({
+
+      // Insert correct foreign key depending on member type
+      const insertPayload: any = {
         user_id: userId,
         client_id: finalClientId,
+        profile_id: finalProfileId,
         video_url: videoPublicUrl,
         transcript: '',
         created_at: new Date().toISOString(),
-      }).select('id, video_url');
+      };
+
+      const { data: insertData, error: dbError } = await supabase.from('recordings').insert(insertPayload).select('id, video_url');
       if (dbError) {
         setRecordingError('Failed to insert recording row: ' + dbError.message);
       } else if (insertData && insertData.length > 0) {
@@ -1094,8 +1118,8 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
                 onClick={handleSaveRecordingDetails}
                 disabled={
                   memberMode === 'existing'
-                    ? !clientId
-                    : newMemberLoading || !newFirstName.trim() || !newLastName.trim() || !newUsername.trim()
+                    ? !clientId || !stoppedRecordingBlob
+                    : newMemberLoading || !newFirstName.trim() || !newLastName.trim() || !newUsername.trim() || !stoppedRecordingBlob
                 }
                 style={{
                   background: palette.accent2,
@@ -1107,10 +1131,10 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
                   fontSize: 18,
                   cursor:
                     memberMode === 'existing'
-                      ? !clientId
+                      ? !clientId || !stoppedRecordingBlob
                         ? 'not-allowed'
                         : 'pointer'
-                      : newMemberLoading || !newFirstName.trim() || !newLastName.trim() || !newUsername.trim()
+                      : newMemberLoading || !newFirstName.trim() || !newLastName.trim() || !newUsername.trim() || !stoppedRecordingBlob
                       ? 'not-allowed'
                       : 'pointer',
                   boxShadow: '0 2px 8px #28a74522',

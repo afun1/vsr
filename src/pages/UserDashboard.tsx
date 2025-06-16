@@ -4,6 +4,7 @@ import { supabase } from '../auth/supabaseClient';
 import ScreenRecorder from './ScreenRecorder';
 import Header from '../Header';
 import RecordingPanel from './RecordingPanel';
+import Comments from '../components/comments'; // <-- Import Comments
 
 // --- Dark mode hook ---
 const useDarkMode = () => {
@@ -21,6 +22,14 @@ const useDarkMode = () => {
   }, []);
   return dark;
 };
+
+interface Recording {
+  id: string;
+  video_url: string;
+  transcript: string;
+  created_at: string;
+  // Add other fields as needed
+}
 
 const UserDashboard: React.FC = () => {
   const { user } = useAuth();
@@ -71,6 +80,10 @@ const UserDashboard: React.FC = () => {
         success: '#28a745'
       };
 
+  // --- Recordings state ---
+  const [recordings, setRecordings] = useState<Recording[]>([]);
+  const [loadingRecordings, setLoadingRecordings] = useState(true);
+
   useEffect(() => {
     if (liveVideoRef.current && liveStream) {
       liveVideoRef.current.srcObject = liveStream;
@@ -101,6 +114,26 @@ const UserDashboard: React.FC = () => {
     fetchDisplayName();
   }, [user]);
 
+  // Fetch user's recordings
+  useEffect(() => {
+    const fetchRecordings = async () => {
+      setLoadingRecordings(true);
+      if (!user?.id) {
+        setRecordings([]);
+        setLoadingRecordings(false);
+        return;
+      }
+      const { data, error } = await supabase
+        .from('recordings')
+        .select('id, video_url, transcript, created_at')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      setRecordings(data || []);
+      setLoadingRecordings(false);
+    };
+    fetchRecordings();
+  }, [user]);
+
   // Warn user before leaving if recording or liveStream is active
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -129,6 +162,20 @@ const UserDashboard: React.FC = () => {
     setRecording(true);
     setRecordedVideoUrl(null);
     window.dispatchEvent(new CustomEvent('sparky-recording-visibility', { detail: true }));
+  };
+
+  // Helper to truncate text to 2 lines (approx)
+  const truncateLines = (text: string, maxLines = 2) => {
+    if (!text) return '';
+    const lines = text.split('\n').filter(l => l.trim() !== '');
+    if (lines.length > maxLines) {
+      return lines.slice(0, maxLines).join('\n') + '...';
+    }
+    if (lines.length === 1) {
+      const words = text.split(' ');
+      if (words.length > 20) return words.slice(0, 20).join(' ') + '...';
+    }
+    return text;
   };
 
   return (
@@ -196,6 +243,78 @@ const UserDashboard: React.FC = () => {
           }}
         >
           <ScreenRecorder recordedVideoUrl={recordedVideoUrl} />
+        </div>
+        {/* User's Recordings List */}
+        <div style={{ width: '100%', maxWidth: 700 }}>
+          <h3 style={{ color: palette.text, marginBottom: 16 }}>Your Recordings</h3>
+          {loadingRecordings ? (
+            <div style={{ color: palette.textSecondary }}>Loading...</div>
+          ) : recordings.length === 0 ? (
+            <div style={{ color: palette.textSecondary }}>No recordings found.</div>
+          ) : (
+            recordings.map(rec => (
+              <div
+                key={rec.id}
+                style={{
+                  background: palette.card,
+                  border: `1px solid ${palette.border}`,
+                  borderRadius: 8,
+                  boxShadow: palette.shadow,
+                  marginBottom: 24,
+                  padding: 20,
+                  color: palette.text
+                }}
+              >
+                <div style={{ marginBottom: 8 }}>
+                  <strong>Created:</strong> {rec.created_at ? new Date(rec.created_at).toLocaleString() : '-'}
+                </div>
+                <div style={{ marginBottom: 8 }}>
+                  <strong>Transcript:</strong>
+                  <div
+                    style={{
+                      marginTop: 4,
+                      background: palette.inputBg,
+                      color: palette.inputText,
+                      borderRadius: 4,
+                      padding: 8,
+                      fontSize: 14,
+                      whiteSpace: 'pre-wrap',
+                      maxHeight: 48,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical'
+                    }}
+                  >
+                    {truncateLines(rec.transcript, 2)}
+                  </div>
+                </div>
+                <div style={{ marginBottom: 8 }}>
+                  <strong>Comments:</strong>
+                  <div
+                    style={{
+                      marginTop: 4,
+                      background: palette.inputBg,
+                      color: palette.inputText,
+                      borderRadius: 4,
+                      padding: 8,
+                      fontSize: 14,
+                      whiteSpace: 'pre-wrap',
+                      maxHeight: 48,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical'
+                    }}
+                  >
+                    <Comments recordingId={rec.id} userId={user?.id || ''} />
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </main>
     </>

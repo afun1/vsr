@@ -670,10 +670,15 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
       }
       try {
         selectedMember = allMembers.find(m => m.id === clientId);
+        // --- Require name for existing member ---
         if (!selectedMember) {
           setRecordingError('Selected member does not exist.');
           if (typeof window !== 'undefined') localStorage.removeItem('lastMemberId');
           setClientId(null);
+          return;
+        }
+        if (!selectedMember.name || selectedMember.name.trim() === '') {
+          setRecordingError('Selected member must have a name. Please choose a member with a name.');
           return;
         }
         if (selectedMember.source === 'client') {
@@ -1118,7 +1123,12 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
                 onClick={handleSaveRecordingDetails}
                 disabled={
                   memberMode === 'existing'
-                    ? !clientId || !stoppedRecordingBlob
+                    ? !clientId || !stoppedRecordingBlob || !(
+                        (() => {
+                          const m = allMembers.find(m => m.id === clientId);
+                          return m && m.name && m.name.trim() !== '';
+                        })()
+                      )
                     : newMemberLoading || !newFirstName.trim() || !newLastName.trim() || !newUsername.trim() || !stoppedRecordingBlob
                 }
                 style={{
@@ -1131,7 +1141,12 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
                   fontSize: 18,
                   cursor:
                     memberMode === 'existing'
-                      ? !clientId || !stoppedRecordingBlob
+                      ? !clientId || !stoppedRecordingBlob || !(
+                          (() => {
+                            const m = allMembers.find(m => m.id === clientId);
+                            return m && m.name && m.name.trim() !== '';
+                          })()
+                        )
                         ? 'not-allowed'
                         : 'pointer'
                       : newMemberLoading || !newFirstName.trim() || !newLastName.trim() || !newUsername.trim() || !stoppedRecordingBlob

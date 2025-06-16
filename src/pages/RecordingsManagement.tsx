@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+// Vercel cache bust: 2025-06-05
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../auth/supabaseClient';
 import Header from '../Header';
+import { useAuth } from '../auth/AuthContext';
 
 // --- Dark mode hook ---
 const useDarkMode = () => {
@@ -18,8 +20,157 @@ const useDarkMode = () => {
 
 const RECORDINGS_PER_PAGE_OPTIONS = [20, 40, 60, 80, 100, 'All'];
 
+// --- CommentsPreview component for table ---
+const CommentsPreview: React.FC<{
+  recordingId: string;
+  palette: any;
+  onReadMore: (comments: string[]) => void;
+  onDownload: (comments: string[]) => void;
+  refreshTrigger?: number;
+}> = ({
+  recordingId,
+  palette,
+  onReadMore,
+  onDownload,
+  refreshTrigger
+}) => {
+  const [comments, setComments] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchComments = async () => {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('comments')
+        .select('content, display_name')
+        .eq('recording_id', recordingId)
+        .order('created_at', { ascending: true });
+      if (!error && data && mounted) {
+        setComments(
+          data.map((c: any) => `By: ${c.display_name}\n${c.content}`)
+        );
+      } else if (mounted) {
+        setComments([]);
+      }
+      setLoading(false);
+    };
+    fetchComments();
+    return () => {
+      mounted = false;
+    };
+  }, [recordingId, refreshTrigger]);
+
+  let preview = '';
+  if (comments.length > 0) {
+    const lines = comments[0].split('\n');
+    preview = lines.slice(0, 2).join('\n');
+    if (lines.length > 2) preview += ' ...';
+  }
+
+  return (
+    <div style={{ color: palette.text, fontSize: 13, whiteSpace: 'pre-line', maxWidth: 320 }}>
+      <div
+        style={{
+          minHeight: 32,
+          maxHeight: 38,
+          overflow: 'hidden',
+          display: '-webkit-box',
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical',
+          whiteSpace: 'pre-line'
+        }}
+      >
+        {loading ? (
+          <span style={{ color: palette.textSecondary }}>Loading...</span>
+        ) : comments.length > 0 ? (
+          preview
+        ) : (
+          <span style={{ color: palette.textSecondary }}>No comments yet.</span>
+        )}
+      </div>
+      <div style={{ marginTop: 4 }}>
+        <a
+          href="#"
+          style={{ color: palette.accent, marginRight: 12, fontSize: 13 }}
+          onClick={e => {
+            e.preventDefault();
+            onReadMore(comments);
+          }}
+        >
+          Read More
+        </a>
+        <a
+          href="#"
+          style={{ color: palette.accent, fontSize: 13 }}
+          onClick={e => {
+            e.preventDefault();
+            onDownload(comments);
+          }}
+        >
+          Download Text
+        </a>
+      </div>
+    </div>
+  );
+};
+
+// --- RecordingPreview copied from RecordingPanel ---
+const RecordingPreview: React.FC<{ recording: any; palette: any; onAddComment: () => void }> = ({ recording, palette, onAddComment }) => {
+  if (!recording) return null;
+  return (
+    <div style={{
+      width: 480,
+      background: palette.card,
+      borderRadius: 10,
+      boxShadow: palette.shadow,
+      padding: 24,
+      margin: '0px auto 32px',
+      color: palette.text,
+      border: `1px solid ${palette.border}`,
+      transition: 'background 0.2s, color 0.2s'
+    }}>
+      <h3 style={{ color: palette.text, marginBottom: 8 }}>Recording Preview</h3>
+      {recording.video_url && (
+        <video
+          src={recording.video_url}
+          controls
+          style={{ width: '100%', maxWidth: 420, marginBottom: 12, background: '#000', borderRadius: 6 }}
+        />
+      )}
+      <div style={{ marginBottom: 8 }}>
+        <strong>Client Name:</strong>{' '}
+        {recording.clients?.name || '-'}
+      </div>
+      <div style={{ marginBottom: 8 }}>
+        <strong>By:</strong> {recording.profiles?.display_name || '-'}
+      </div>
+      <div style={{ marginBottom: 8 }}>
+        <strong>Date:</strong> {recording.created_at ? new Date(recording.created_at).toLocaleString() : '-'}
+      </div>
+      <div style={{ marginTop: 16, display: 'flex', justifyContent: 'center' }}>
+        <button
+          style={{
+            background: 'none',
+            color: palette.accent4,
+            border: 'none',
+            textDecoration: 'underline',
+            cursor: 'pointer',
+            fontSize: 15,
+            fontWeight: 600
+          }}
+          onClick={onAddComment}
+        >
+          Add Comment
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const RecordingsManagement: React.FC = () => {
   const darkMode = useDarkMode();
+  const { user } = useAuth();
   const palette = darkMode
     ? {
         bg: '#181a20',
@@ -76,17 +227,84 @@ const RecordingsManagement: React.FC = () => {
   const [copiedUrlId, setCopiedUrlId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Modal state for transcript
+  // Date range state
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+
+  // Modal state for transcript/comments
   const [modalTranscript, setModalTranscript] = useState<string | null>(null);
   const [modalTitle, setModalTitle] = useState<string | null>(null);
   const [showTranscriptModal, setShowTranscriptModal] = useState(false);
+
+  // Comments modal
+  const [modalComments, setModalComments] = useState<string[]>([]);
+  const [showCommentsModal, setShowCommentsModal] = useState(false);
+  const [modalCommentsFilename, setModalCommentsFilename] = useState<string>('');
+
+  // Preview panel state
+  const [previewRecording, setPreviewRecording] = useState<any | null>(null);
+
+  // Add Comment Modal state
+  const [showAddCommentModal, setShowAddCommentModal] = useState(false);
+  const [addCommentText, setAddCommentText] = useState('');
+  const [addCommentLoading, setAddCommentLoading] = useState(false);
+  const [addCommentError, setAddCommentError] = useState<string | null>(null);
+  const [addCommentSuccess, setAddCommentSuccess] = useState<string | null>(null);
+  const [addCommentDisplayName, setAddCommentDisplayName] = useState('');
+  const [addCommentBy, setAddCommentBy] = useState('');
+  const [addCommentDisplayNameLoading, setAddCommentDisplayNameLoading] = useState(true);
+
+  // For triggering comments refresh after adding a comment
+  const [commentsRefreshMap, setCommentsRefreshMap] = useState<{ [recordingId: string]: number }>({});
+
+  // For keeping track of which recording's comments should refresh
+  const lastCommentedRecordingId = useRef<string | null>(null);
+
+  // Only allow add comment when user is loaded and display name is loaded
+  const addCommentReady = (typeof user === 'string' ? !!user : !!user?.id) && !addCommentDisplayNameLoading;
+
+  // Fetch display_name for the current user for the Add Comment modal
+  useEffect(() => {
+    const fetchDisplayName = async () => {
+      setAddCommentDisplayNameLoading(true);
+      let displayName = '';
+      let userId = typeof user === 'string' ? user : user?.id;
+      if (userId) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('display_name')
+          .eq('id', userId)
+          .maybeSingle();
+        if (!error && data && data.display_name && data.display_name.trim() !== '') {
+          displayName = data.display_name;
+        } else if (typeof user === 'object' && user.user_metadata && user.user_metadata.full_name) {
+          displayName = user.user_metadata.full_name;
+        } else if (typeof user === 'object' && user.email) {
+          displayName = user.email;
+        }
+      }
+      setAddCommentDisplayName(displayName);
+      setAddCommentBy(displayName);
+      setAddCommentDisplayNameLoading(false);
+    };
+    fetchDisplayName();
+  }, [user]);
+
+  useEffect(() => {
+    if (showAddCommentModal) {
+      setAddCommentBy(addCommentDisplayName);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showAddCommentModal, addCommentDisplayName]);
 
   useEffect(() => {
     const fetchRecordings = async () => {
       setLoading(true);
       const { data, error } = await supabase
         .from('recordings')
-        .select(`id, video_url, transcript, created_at, client_id, user_id, clients:client_id (name, first_name, last_name), profiles:user_id (display_name)`)
+        .select(
+          `id, video_url, transcript, created_at, client_id, user_id, clients:client_id (name), profiles:user_id (display_name)`
+        )
         .order('created_at', { ascending: false });
       if (!error && data) setRecordings(data);
       setLoading(false);
@@ -95,7 +313,9 @@ const RecordingsManagement: React.FC = () => {
   }, []);
 
   const exportCSV = (rows: any[], columns: string[], filename: string) => {
-    const csv = [columns.join(',')].concat(rows.map(r => columns.map(c => JSON.stringify(r[c] ?? '')).join(','))).join('\n');
+    const csv = [columns.join(',')].concat(
+      rows.map(r => columns.map(c => JSON.stringify(r[c] ?? '')).join(','))
+    ).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -112,14 +332,27 @@ const RecordingsManagement: React.FC = () => {
     setSelectedRecordingIds([]);
   };
 
+  // --- Date range filter logic ---
+  function isWithinDateRange(dateStr: string) {
+    if (!dateStr) return true;
+    const date = new Date(dateStr);
+    if (dateFrom && date < new Date(dateFrom)) return false;
+    if (dateTo) {
+      // Add 1 day to include the end date fully
+      const end = new Date(dateTo);
+      end.setHours(23, 59, 59, 999);
+      if (date > end) return false;
+    }
+    return true;
+  }
+
   const filteredRecordings = recordings.filter(r => {
+    // Date range filter
+    if (!isWithinDateRange(r.created_at)) return false;
     if (!recordingSearch) return true;
     const search = recordingSearch.toLowerCase();
     const recorderName = (r.profiles && r.profiles.display_name) ? r.profiles.display_name.toLowerCase() : '';
-    const clientObj = r.clients || {};
-    const clientName = (clientObj.name || '').toLowerCase();
-    const clientFirst = (clientObj.first_name || '').toLowerCase();
-    const clientLast = (clientObj.last_name || '').toLowerCase();
+    const clientName = (r.clients && r.clients.name) ? r.clients.name.toLowerCase() : '';
     const videoUrl = (r.video_url || '').toLowerCase();
     const transcript = (r.transcript || '').toLowerCase();
     const idStr = r.id ? r.id.toString() : '';
@@ -128,102 +361,187 @@ const RecordingsManagement: React.FC = () => {
       transcript.includes(search) ||
       idStr.includes(search) ||
       recorderName.includes(search) ||
-      clientName.includes(search) ||
-      clientFirst.includes(search) ||
-      clientLast.includes(search)
+      clientName.includes(search)
     );
   });
 
-  // Handle "All" option for per page
   const perPage = recordingsPerPage === 'All' ? filteredRecordings.length || 1 : Number(recordingsPerPage);
   const recordingPageCount = Math.max(1, Math.ceil(filteredRecordings.length / perPage));
-  const pagedRecordings = filteredRecordings.slice((recordingPage-1)*perPage, recordingPage*perPage);
+  const pagedRecordings = filteredRecordings.slice((recordingPage - 1) * perPage, recordingPage * perPage);
 
-  // If "All" is selected, always show page 1
   useEffect(() => {
     if (recordingsPerPage === 'All') setRecordingPage(1);
   }, [recordingsPerPage]);
+
+  function getTitle(clientName: string, displayName: string, createdAt: string) {
+    // Vertical stack: name, display_name, created_at
+    return (
+      <div>
+        <div><strong>Name:</strong> {clientName || '-'}</div>
+        <div><strong>By:</strong> {displayName || '-'}</div>
+        <div><strong>Date:</strong> {createdAt ? new Date(createdAt).toLocaleString() : '-'}</div>
+      </div>
+    );
+  }
+
+  function getCommentsFilename(clientName: string, displayName: string, dateStr: string, timeStr: string) {
+    const safeClient = (clientName || '').replace(/[^a-zA-Z0-9-_]/g, '');
+    const safeDisplay = (displayName || '').replace(/[^a-zA-Z0-9-_]/g, '');
+    return `${safeClient}-by-${safeDisplay}-${dateStr}-at-${timeStr}-comments.txt`;
+  }
+
+  const openAddCommentModal = () => {
+    setAddCommentText('');
+    setAddCommentError(null);
+    setAddCommentSuccess(null);
+    setShowAddCommentModal(true);
+    // Log modal open state and user info for debugging
+    console.log('[AddCommentModal] Opened', {
+      user,
+      addCommentDisplayName,
+      addCommentBy,
+      addCommentDisplayNameLoading
+    });
+  };
+
+  const handleAddComment = async () => {
+    if (!previewRecording || !addCommentText.trim()) return;
+    setAddCommentLoading(true);
+    setAddCommentError(null);
+    setAddCommentSuccess(null);
+
+    const displayName = addCommentBy || addCommentDisplayName || '';
+
+    const { error } = await supabase.from('comments').insert([
+      {
+        recording_id: previewRecording.id,
+        content: addCommentText,
+        display_name: displayName
+      }
+    ]);
+    if (error) {
+      setAddCommentError('Failed to add comment.');
+    } else {
+      setAddCommentSuccess('Comment added!');
+      setAddCommentText('');
+      setShowAddCommentModal(false);
+
+      lastCommentedRecordingId.current = previewRecording.id;
+      setCommentsRefreshMap(prev => ({
+        ...prev,
+        [previewRecording.id]: (prev[previewRecording.id] || 0) + 1
+      }));
+    }
+    setAddCommentLoading(false);
+  };
+
+  // --- Search input style ---
+  const inputStyle: React.CSSProperties = {
+    background: palette.inputBg,
+    color: palette.inputText,
+    border: `1px solid ${palette.inputBorder}`,
+    borderRadius: 4,
+    padding: '6px 14px',
+    fontSize: 16,
+    outline: 'none',
+    transition: 'background 0.2s, color 0.2s, border 0.2s'
+  };
 
   return (
     <>
       <Header />
       <div style={{ padding: 20, maxWidth: 1400, margin: '0 auto', paddingTop: 100, background: palette.bg, minHeight: '100vh', color: palette.text }}>
         <h3 style={{ color: palette.text }}>Recordings Management</h3>
-        <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+
+        {/* --- Search Field + Date Range --- */}
+        <div style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <input
+            type="text"
+            placeholder="Search recordings by client, user, transcript, or URL..."
+            value={recordingSearch}
+            onChange={e => {
+              setRecordingSearch(e.target.value);
+              setRecordingPage(1);
+            }}
+            style={{ ...inputStyle, width: 340 }}
+          />
+          <label style={{ color: palette.textSecondary, fontSize: 15 }}>
+            From:{' '}
             <input
-              type="text"
-              placeholder="Search recordings by URL, transcript, or ID..."
-              value={recordingSearch}
-              onChange={e => setRecordingSearch(e.target.value)}
-              style={{
-                fontSize: 15,
-                padding: '4px 10px',
-                width: 320,
-                background: palette.inputBg,
-                color: palette.inputText,
-                border: `1px solid ${palette.inputBorder}`,
-                borderRadius: 6,
-                outline: 'none'
+              type="date"
+              value={dateFrom}
+              onChange={e => {
+                setDateFrom(e.target.value);
+                setRecordingPage(1);
               }}
+              style={{ ...inputStyle, width: 140, fontSize: 15, padding: '4px 10px', marginLeft: 4 }}
+              max={dateTo || undefined}
             />
-            <span style={{ color: palette.textSecondary, fontSize: 15 }}>
-              Files per page:
-              <select
-                value={recordingsPerPage}
-                onChange={e => {
-                  setRecordingPage(1);
-                  setRecordingsPerPage(e.target.value === 'All' ? 'All' : Number(e.target.value));
-                }}
-                style={{
-                  marginLeft: 8,
-                  fontSize: 15,
-                  padding: '2px 8px',
-                  background: palette.inputBg,
-                  color: palette.inputText,
-                  border: `1px solid ${palette.inputBorder}`,
-                  borderRadius: 6
-                }}
-              >
-                {RECORDINGS_PER_PAGE_OPTIONS.map(opt => (
-                  <option key={opt} value={opt}>{opt}</option>
-                ))}
-              </select>
-            </span>
-          </div>
-          <div style={{ display: 'flex', gap: 12, marginLeft: 'auto' }}>
-            <button
-              onClick={() => exportCSV(filteredRecordings, ['id','video_url','transcript','created_at','client_id','user_id'], 'recordings.csv')}
-              style={{
-                background: palette.accent,
-                color: '#fff',
-                border: 'none',
-                borderRadius: 4,
-                padding: '6px 14px',
-                fontWeight: 600,
-                boxShadow: palette.shadow
+          </label>
+          <label style={{ color: palette.textSecondary, fontSize: 15 }}>
+            To:{' '}
+            <input
+              type="date"
+              value={dateTo}
+              onChange={e => {
+                setDateTo(e.target.value);
+                setRecordingPage(1);
               }}
-            >
-              Export Recordings CSV
-            </button>
-            <button
-              onClick={handleBulkDeleteRecordings}
-              disabled={selectedRecordingIds.length === 0}
-              style={{
-                background: palette.accent3,
-                color: '#fff',
-                border: 'none',
-                borderRadius: 4,
-                padding: '6px 14px',
-                fontWeight: 600,
-                opacity: selectedRecordingIds.length === 0 ? 0.6 : 1,
-                cursor: selectedRecordingIds.length === 0 ? 'not-allowed' : 'pointer'
+              style={{ ...inputStyle, width: 140, fontSize: 15, padding: '4px 10px', marginLeft: 4 }}
+              min={dateFrom || undefined}
+            />
+          </label>
+          <button
+            style={{
+              background: palette.accent,
+              color: '#fff',
+              border: 'none',
+              borderRadius: 4,
+              padding: '7px 18px',
+              fontWeight: 600
+            }}
+            onClick={() => setRecordingPage(1)}
+          >
+            Search
+          </button>
+          <span style={{ color: palette.textSecondary, fontSize: 15, marginLeft: 16 }}>
+            Files per page:
+            <select
+              value={recordingsPerPage}
+              onChange={e => {
+                setRecordingPage(1);
+                setRecordingsPerPage(e.target.value as any);
               }}
+              style={{ marginLeft: 8, fontSize: 15, padding: '2px 8px', background: palette.inputBg, color: palette.inputText, border: `1px solid ${palette.inputBorder}` }}
             >
-              Delete Selected
-            </button>
-          </div>
+              {RECORDINGS_PER_PAGE_OPTIONS.map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+          </span>
         </div>
+
+        {/* --- Preview Panel (copied from RecordingPanel) --- */}
+        {previewRecording ? (
+          <RecordingPreview recording={previewRecording} palette={palette} onAddComment={openAddCommentModal} />
+        ) : (
+          <div style={{
+            width: 480,
+            background: palette.card,
+            borderRadius: 10,
+            boxShadow: palette.shadow,
+            padding: 24,
+            margin: '0px auto 32px',
+            color: palette.text,
+            border: `1px solid ${palette.border}`,
+            transition: 'background 0.2s, color 0.2s',
+            textAlign: 'center'
+          }}>
+            <span style={{ color: palette.textSecondary }}>Select a recording below to preview and add comments.</span>
+          </div>
+        )}
+
+        {/* --- Table, pagination, transcript/comments modals, etc. --- */}
         {loading ? (
           <div style={{ color: palette.textSecondary }}>Loading recordings...</div>
         ) : (
@@ -239,19 +557,16 @@ const RecordingsManagement: React.FC = () => {
           }}>
             <thead>
               <tr>
-                {/* Removed Select All checkbox */}
                 <th style={{ background: palette.tableBg, borderBottom: `1px solid ${palette.tableBorder}` }}></th>
                 <th style={{ textAlign: 'left', borderBottom: `1px solid ${palette.tableBorder}` }}>Title</th>
                 <th style={{ textAlign: 'left', borderBottom: `1px solid ${palette.tableBorder}` }}>Play / URL</th>
                 <th style={{ textAlign: 'left', borderBottom: `1px solid ${palette.tableBorder}` }}>Transcript</th>
+                <th style={{ textAlign: 'left', borderBottom: `1px solid ${palette.tableBorder}` }}>Comments</th>
               </tr>
             </thead>
             <tbody>
               {pagedRecordings.map(r => {
-                const clientObj = r.clients || {};
-                const clientName = (clientObj.first_name && clientObj.last_name)
-                  ? `${clientObj.first_name} ${clientObj.last_name}`
-                  : (clientObj.name || '-');
+                const clientName = r.clients?.name || '-';
                 const displayName = r.profiles?.display_name || '-';
                 const createdAtDate = r.created_at ? new Date(r.created_at) : null;
                 const dateStr = createdAtDate
@@ -267,7 +582,8 @@ const RecordingsManagement: React.FC = () => {
                   const seconds = String(createdAtDate.getSeconds()).padStart(2, '0');
                   timeStr = `${displayHours}-${minutes}-${seconds}${ampm}`;
                 }
-                const createdAt = createdAtDate ? createdAtDate.toLocaleString() : '-';
+                const createdAt = r.created_at || '';
+                const title = getTitle(clientName, displayName, createdAt);
                 return (
                   <tr key={r.id} style={{ background: palette.card }}>
                     <td>
@@ -278,15 +594,13 @@ const RecordingsManagement: React.FC = () => {
                       />
                     </td>
                     <td>
-                      <div style={{ color: palette.text }}>{clientName}</div>
-                      <div style={{ color: palette.textSecondary, fontSize: 13 }}>By: {displayName}</div>
-                      <div style={{ color: palette.textSecondary, fontSize: 13 }}>{createdAt}</div>
+                      {title}
                     </td>
                     <td>
                       {r.video_url ? (
                         <>
                           <button
-                            onClick={() => window.open(r.video_url, '_blank')}
+                            onClick={() => setPreviewRecording(r)}
                             style={{
                               background: palette.accent,
                               color: '#fff',
@@ -376,12 +690,45 @@ const RecordingsManagement: React.FC = () => {
                           })()
                         : '-'}
                     </td>
+                    <td style={{ minWidth: 200, maxWidth: 320, verticalAlign: 'top' }}>
+                      <CommentsPreview
+                        recordingId={r.id}
+                        palette={palette}
+                        onReadMore={comments => {
+                          setModalComments(comments);
+                          setModalTitle(clientName);
+                          setShowCommentsModal(true);
+                          setModalCommentsFilename(getCommentsFilename(clientName, displayName, dateStr, timeStr));
+                        }}
+                        onDownload={comments => {
+                          const text = comments.length > 0 ? comments.join('\n\n---\n\n') : 'No comments';
+                          const filename = getCommentsFilename(clientName, displayName, dateStr, timeStr);
+                          const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = filename;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        }}
+                        refreshTrigger={commentsRefreshMap[r.id] || 0}
+                      />
+                    </td>
                   </tr>
                 );
               })}
+              {pagedRecordings.length === 0 && (
+                <tr>
+                  <td colSpan={5} style={{ color: palette.textSecondary, textAlign: 'center', padding: 24 }}>
+                    No recordings found.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         )}
+
+        {/* Pagination */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
           <div style={{ display: 'flex', gap: 0 }}>
             <a
@@ -455,6 +802,7 @@ const RecordingsManagement: React.FC = () => {
             </button>
           </div>
         </div>
+
         {/* Transcript Modal */}
         {showTranscriptModal && (
           <div
@@ -525,6 +873,123 @@ const RecordingsManagement: React.FC = () => {
               >
                 {modalTranscript}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Comments Modal */}
+        {showCommentsModal && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              width: '100vw',
+              height: '100vh',
+              background: darkMode ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.35)',
+              zIndex: 9999,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+            onClick={() => setShowCommentsModal(false)}
+          >
+            <div
+              style={{
+                background: palette.modalBg,
+                color: palette.modalText,
+                borderRadius: 10,
+                padding: 0,
+                maxWidth: 700,
+                width: '95%',
+                boxShadow: palette.modalShadow,
+                position: 'relative',
+                maxHeight: '90vh',
+                display: 'flex',
+                flexDirection: 'column',
+                border: `1px solid ${palette.modalBorder}`
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              <button
+                onClick={() => setShowCommentsModal(false)}
+                style={{
+                  position: 'absolute',
+                  top: 12,
+                  right: 12,
+                  background: palette.accent,
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 4,
+                  padding: '4px 12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  zIndex: 2
+                }}
+              >
+                Close
+              </button>
+              <h3 style={{ marginTop: 24, marginBottom: 16, paddingLeft: 32, paddingRight: 80, color: palette.modalText }}>
+                {modalTitle ? `Comments for ${modalTitle}` : 'Comments'}
+              </h3>
+              <div
+                style={{
+                  flex: 1,
+                  overflowY: 'auto',
+                  padding: 32,
+                  paddingTop: 0,
+                  minHeight: 0,
+                  fontSize: 15,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  color: palette.modalText
+                }}
+              >
+                {modalComments.length > 0 ? (
+                  modalComments.map((c, idx) => (
+                    <div key={idx} style={{
+                      marginBottom: 18,
+                      padding: 12,
+                      background: darkMode ? '#23262f' : '#f5f5f5',
+                      borderRadius: 6,
+                      border: `1px solid ${palette.inputBorder}`,
+                      maxHeight: 120,
+                      overflowY: 'auto'
+                    }}>
+                      {c}
+                    </div>
+                  ))
+                ) : (
+                  <span style={{ color: palette.textSecondary }}>No comments yet.</span>
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  const text = modalComments.length > 0 ? modalComments.join('\n\n---\n\n') : 'No comments';
+                  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = modalCommentsFilename || 'comments.txt';
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                style={{
+                  background: 'none',
+                  color: palette.accent2,
+                  border: 'none',
+                  textDecoration: 'underline',
+                  cursor: 'pointer',
+                  fontSize: 15,
+                  fontWeight: 600,
+                  marginRight: 16,
+                  position: 'absolute',
+                  left: 32,
+                  bottom: 24
+                }}
+              >
+                Download Text
+              </button>
             </div>
           </div>
         )}

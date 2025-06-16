@@ -6,6 +6,7 @@ import Header from '../Header';
 // @ts-ignore
 import FileSaver from 'file-saver';
 import { useAuth } from '../auth/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 // --- Dark mode hook ---
 const useDarkMode = () => {
@@ -65,10 +66,19 @@ const TranscriptCell: React.FC<{ transcript: string, rec: any, onReadMore: (full
     return '';
   }).filter(Boolean);
   const displayName = rec.profiles?.display_name || '-';
+  const createdAt = rec.created_at ? new Date(rec.created_at).toLocaleString() : '';
   const cardTitle = `${clientDisplayNames.length > 0 ? clientDisplayNames.join(',') : 'Recording'}-by-${displayName.replace(/\s+/g, '')}-${formatDateForFilename(rec.created_at)}`;
   const truncated = transcript && transcript.length > TRANSCRIPT_PREVIEW_LENGTH
     ? transcript.slice(0, TRANSCRIPT_PREVIEW_LENGTH).replace(/\n/g, ' ') + '...'
     : transcript;
+
+  // Compose the download text with name/by/date
+  const downloadText =
+    (clientDisplayNames.length > 0 ? clientDisplayNames.join(', ') : 'Recording') +
+    `\nby: ${displayName}` +
+    (createdAt ? `\n${createdAt}` : '') +
+    `\n\n${transcript || 'No transcript'}`;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       <span
@@ -114,8 +124,7 @@ const TranscriptCell: React.FC<{ transcript: string, rec: any, onReadMore: (full
             padding: 0
           }}
           onClick={() => {
-            const text = transcript || 'No transcript';
-            const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+            const blob = new Blob([downloadText], { type: 'text/plain;charset=utf-8' });
             FileSaver.saveAs(blob, `${cardTitle}.txt`);
           }}
         >
@@ -126,7 +135,249 @@ const TranscriptCell: React.FC<{ transcript: string, rec: any, onReadMore: (full
   );
 };
 
+// --- Comments Cell ---
+const CommentsCell: React.FC<{ recordingId: string; palette: any }> = ({ recordingId, palette }) => {
+  const [comments, setComments] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [clientName, setClientName] = useState<string>('');
+  const [displayName, setDisplayName] = useState<string>('');
+  const [createdAt, setCreatedAt] = useState<string>('');
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchComments = async () => {
+      setLoading(true);
+      // Fetch comments and also fetch client name and user display_name from the first comment's recording
+      const { data, error } = await supabase
+        .from('comments')
+        .select('content, display_name, created_at, recording_id')
+        .eq('recording_id', recordingId)
+        .order('created_at', { ascending: true });
+      let client = '';
+      let userDisplay = '';
+      let created = '';
+      if (!error && data && mounted) {
+        setComments(data);
+        // Fetch client name and display_name from the recording
+        if (data.length > 0) {
+          const { data: recData } = await supabase
+            .from('recordings')
+            .select('clients:client_id(name), profiles:user_id(display_name)')
+            .eq('id', recordingId)
+            .single();
+          client = recData?.clients?.name || '';
+          userDisplay = recData?.profiles?.display_name || '';
+          created = data[0].created_at || '';
+        }
+      } else if (mounted) {
+        setComments([]);
+      }
+      if (mounted) {
+        setClientName(client);
+        setDisplayName(userDisplay);
+        setCreatedAt(created);
+      }
+      setLoading(false);
+    };
+    fetchComments();
+    return () => { mounted = false; };
+  }, [recordingId]);
+
+  let preview = '';
+  if (comments.length > 0) {
+    const lines = (`By: ${comments[0].display_name}\n${comments[0].content}`).split('\n');
+    preview = lines.slice(0, 2).join('\n');
+    if (lines.length > 2) preview += ' ...';
+  }
+
+  const handleReadMore = () => {
+    setModalOpen(true);
+  };
+
+  const handleDownload = () => {
+    // Compose filename: client name, by display name, created at
+    const safeClient = clientName || 'Comment';
+    const safeDisplay = displayName || (comments[0]?.display_name || '-');
+    const safeCreated = createdAt || (comments[0]?.created_at || '');
+    const filename = `${safeClient}-by-${safeDisplay.replace(/\s+/g, '')}-${formatDateForFilename(safeCreated)}.txt`;
+    const text = comments.map(c =>
+      (clientName || 'Comment') +
+      `\nby: ${c.display_name}` +
+      (c.created_at ? `\n${new Date(c.created_at).toLocaleString()}` : '') +
+      `\n\n${c.content || 'No comment'}`
+    ).join('\n\n---\n\n');
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    FileSaver.saveAs(blob, filename);
+  };
+
+  return (
+    <div style={{ color: palette.text, fontSize: 13, whiteSpace: 'pre-line', maxWidth: 320 }}>
+      <div
+        style={{
+          minHeight: 32,
+          maxHeight: 38,
+          overflow: 'hidden',
+          display: '-webkit-box',
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical',
+          whiteSpace: 'pre-line'
+        }}
+      >
+        {loading ? (
+          <span style={{ color: palette.textSecondary }}>Loading...</span>
+        ) : comments.length > 0 ? (
+          preview
+        ) : (
+          <span style={{ color: palette.textSecondary }}>No comments yet.</span>
+        )}
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+        <button
+          style={{
+            background: 'none',
+            color: palette.accent,
+            border: 'none',
+            textDecoration: 'underline',
+            cursor: 'pointer',
+            fontSize: 13,
+            fontWeight: 600,
+            padding: 0
+          }}
+          onClick={handleReadMore}
+          disabled={comments.length === 0}
+        >
+          Read More
+        </button>
+        <button
+          style={{
+            background: 'none',
+            color: palette.success,
+            border: 'none',
+            textDecoration: 'underline',
+            cursor: 'pointer',
+            fontSize: 13,
+            fontWeight: 600,
+            padding: 0
+          }}
+          onClick={handleDownload}
+          disabled={comments.length === 0}
+        >
+          Download Text
+        </button>
+      </div>
+      {modalOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: palette.bg + 'cc',
+          zIndex: 2000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          <div style={{
+            background: palette.card,
+            borderRadius: 10,
+            maxWidth: 700,
+            width: '95%',
+            padding: 0,
+            boxShadow: palette.shadow,
+            position: 'relative',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            color: palette.text
+          }}>
+            <h3 style={{ marginTop: 24, marginBottom: 16, paddingLeft: 32, paddingRight: 80, color: palette.text }}>Comments</h3>
+            <div style={{
+              flex: 1,
+              overflowY: 'auto',
+              padding: 32,
+              paddingTop: 0,
+              minHeight: 0,
+              fontSize: 15,
+              color: palette.text,
+              background: palette.card,
+              whiteSpace: 'pre-line'
+            }}>
+              {comments.length > 0 ? comments.map(c =>
+                (clientName || 'Comment') +
+                `\nby: ${c.display_name}` +
+                (c.created_at ? `\n${new Date(c.created_at).toLocaleString()}` : '') +
+                `\n\n${c.content || 'No comment'}`
+              ).join('\n\n---\n\n') : 'No comments'}
+            </div>
+            <button
+              onClick={handleDownload}
+              style={{
+                background: 'none',
+                color: palette.success,
+                border: 'none',
+                textDecoration: 'underline',
+                cursor: 'pointer',
+                fontSize: 15,
+                fontWeight: 600,
+                marginLeft: 32,
+                marginBottom: 24,
+                alignSelf: 'flex-start'
+              }}
+            >
+              Download Text
+            </button>
+            <button
+              onClick={() => setModalOpen(false)}
+              style={{
+                background: palette.accent,
+                color: '#fff',
+                border: 'none',
+                borderRadius: 6,
+                padding: '10px 28px',
+                fontSize: 16,
+                fontWeight: 700,
+                cursor: 'pointer',
+                position: 'absolute',
+                right: 24,
+                bottom: 24
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- Play Button Cell ---
+const PlayCell: React.FC<{ videoUrl: string; palette: any }> = ({ videoUrl, palette }) => {
+  if (!videoUrl) return null;
+  return (
+    <a
+      href={videoUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{
+        display: 'inline-block',
+        background: palette.accent,
+        color: '#fff',
+        borderRadius: 4,
+        padding: '6px 14px',
+        fontWeight: 600,
+        fontSize: 14,
+        textDecoration: 'none',
+        margin: '0 4px'
+      }}
+    >
+      Play
+    </a>
+  );
+};
+
+// --- Columns order: Play, Date, Client, Email, Sparky, Phone, User, Transcript, Comments ---
 const DEFAULT_COLUMNS: ColumnConfig[] = [
+  { id: 'video', label: '', accessor: (rec: any) => rec.video_url, default: true },
   { id: 'date', label: 'Date', accessor: (rec: any) => new Date(rec.created_at).toLocaleString(), default: true },
   { id: 'client', label: 'Client', accessor: (rec: any) => rec.clients?.name || rec.client_name || '', default: true },
   { id: 'email', label: 'Email', accessor: (rec: any) => rec.clients?.email || rec.client_email || '', default: true },
@@ -134,7 +385,7 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
   { id: 'phone', label: 'Phone', accessor: (rec: any) => rec.clients?.phone || rec.client_phone || '', default: true },
   { id: 'user', label: 'User', accessor: (rec: any) => rec.profiles?.display_name || '', default: true },
   { id: 'transcript', label: 'Transcript', accessor: (rec: any) => rec, default: true },
-  { id: 'video', label: 'Video', accessor: (rec: any) => rec.video_url ? <a href={rec.video_url} target="_blank" rel="noopener noreferrer">Play</a> : '', default: true },
+  { id: 'comments', label: 'Comments', accessor: (rec: any) => rec, default: true },
 ];
 
 function getStoredColumns(): ColumnConfig[] {
@@ -179,6 +430,7 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
 const SearchExport: React.FC = () => {
   const { user, role } = useAuth();
   const darkMode = useDarkMode();
+  const navigate = useNavigate();
 
   // Palette for dark/light mode
   const palette = darkMode
@@ -344,9 +596,16 @@ const SearchExport: React.FC = () => {
   const exportToCSV = () => {
     const headers = visibleColumns.map(c => c.label);
     const rows = filteredRecordings.map(rec => visibleColumns.map(c => {
-      let val = c.id === 'transcript'
-        ? (rec.transcript || '')
-        : c.accessor(rec);
+      let val;
+      if (c.id === 'transcript') {
+        val = rec.transcript || '';
+      } else if (c.id === 'comments') {
+        val = 'See app for comments';
+      } else if (c.id === 'video') {
+        val = rec.video_url ? rec.video_url : '';
+      } else {
+        val = c.accessor(rec);
+      }
       if (typeof val === 'string') return val.replace(/\n/g, ' ');
       if (typeof val === 'object' && val?.props?.children) return val.props.children;
       return val;
@@ -369,9 +628,16 @@ const SearchExport: React.FC = () => {
     const rows = filteredRecordings.map(rec => {
       const row: any = {};
       visibleColumns.forEach(c => {
-        let val = c.id === 'transcript'
-          ? (rec.transcript || '')
-          : c.accessor(rec);
+        let val;
+        if (c.id === 'transcript') {
+          val = rec.transcript || '';
+        } else if (c.id === 'comments') {
+          val = 'See app for comments';
+        } else if (c.id === 'video') {
+          val = rec.video_url ? rec.video_url : '';
+        } else {
+          val = c.accessor(rec);
+        }
         if (typeof val === 'object' && val?.props?.children) val = val.props.children;
         row[c.label] = val;
       });
@@ -390,9 +656,16 @@ const SearchExport: React.FC = () => {
       doc.setFontSize(14);
       let y = 20;
       visibleColumns.forEach(col => {
-        let val = col.id === 'transcript'
-          ? (rec.transcript || '')
-          : col.accessor(rec);
+        let val;
+        if (col.id === 'transcript') {
+          val = rec.transcript || '';
+        } else if (col.id === 'comments') {
+          val = 'See app for comments';
+        } else if (col.id === 'video') {
+          val = rec.video_url ? rec.video_url : '';
+        } else {
+          val = col.accessor(rec);
+        }
         if (typeof val === 'object' && val?.props?.children) val = val.props.children;
         doc.text(`${col.label}: ${val}`, 10, y);
         y += 10;
@@ -470,6 +743,46 @@ const SearchExport: React.FC = () => {
       <Header />
       <div style={{ ...cardStyle, background: palette.card }}>
         <h2 style={{ color: palette.text }}>Search & Export Recordings</h2>
+        {/* Role-based links */}
+        <div style={{ marginBottom: 16 }}>
+          {role === 'user' && (
+            <button
+              type="button"
+              onClick={() => navigate('/user')}
+              style={{
+                color: palette.accent,
+                textDecoration: 'underline',
+                fontWeight: 600,
+                marginRight: 24,
+                fontSize: 15,
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 0
+              }}
+            >
+              To add comments click here
+            </button>
+          )}
+          {role === 'admin' && (
+            <button
+              type="button"
+              onClick={() => navigate('/recordings-management')}
+              style={{
+                color: palette.accent3,
+                textDecoration: 'underline',
+                fontWeight: 600,
+                fontSize: 15,
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 0
+              }}
+            >
+              To add admin comments, click here
+            </button>
+          )}
+        </div>
         <div style={{ display: 'flex', gap: 16, marginBottom: 16, alignItems: 'flex-end' }}>
           <div style={{ flex: 2, display: 'flex', flexDirection: 'column' }}>
             <label htmlFor="search-input" style={{ fontWeight: 600, marginBottom: 4, color: palette.text }}>Search</label>
@@ -544,7 +857,7 @@ const SearchExport: React.FC = () => {
                   {columns.map((col, idx) => (
                     <div key={col.id} style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
                       <input type="checkbox" checked={!!col.visible} onChange={() => toggleColumn(idx)} id={`col-${col.id}`} />
-                      <label htmlFor={`col-${col.id}`} style={{ marginLeft: 6, flex: 1, color: palette.text }}>{col.label}</label>
+                      <label htmlFor={`col-${col.id}`} style={{ marginLeft: 6, flex: 1, color: palette.text }}>{col.label || 'Play'}</label>
                       <button onClick={() => moveColumn(idx, -1)} disabled={idx === 0} style={{ marginLeft: 4, fontSize: 12 }}>↑</button>
                       <button onClick={() => moveColumn(idx, 1)} disabled={idx === columns.length - 1} style={{ fontSize: 12 }}>↓</button>
                     </div>
@@ -562,10 +875,12 @@ const SearchExport: React.FC = () => {
                       style={{
                         ...thStyle,
                         ...(col.id === 'sparky' ? { width: 160 } : {}),
-                        ...(col.id === 'transcript' ? { maxWidth: 180 } : {})
+                        ...(col.id === 'transcript' ? { maxWidth: 180 } : {}),
+                        ...(col.id === 'comments' ? { maxWidth: 180 } : {}),
+                        ...(col.id === 'video' ? { width: 70 } : {})
                       }}
                     >
-                      {col.label}
+                      {col.label || ''}
                     </th>
                   ))}
                 </tr>
@@ -586,11 +901,22 @@ const SearchExport: React.FC = () => {
                             overflowWrap: 'break-word',
                             overflow: 'hidden',
                           } : {}),
-                          ...(col.id === 'video' ? { maxWidth: 120, wordBreak: 'break-all' } : {}),
+                          ...(col.id === 'comments' ? {
+                            maxWidth: 320,
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word',
+                            overflowWrap: 'break-word',
+                            overflow: 'hidden',
+                          } : {}),
+                          ...(col.id === 'video' ? { width: 70, textAlign: 'center' } : {}),
                         }}
                       >
-                        {col.id === 'transcript'
+                        {col.id === 'video'
+                          ? <PlayCell videoUrl={rec.video_url} palette={palette} />
+                          : col.id === 'transcript'
                           ? <TranscriptCell transcript={rec.transcript || ''} rec={rec} onReadMore={handleReadMore} palette={palette} />
+                          : col.id === 'comments'
+                          ? <CommentsCell recordingId={rec.id} palette={palette} />
                           : col.accessor(rec)
                         }
                       </td>

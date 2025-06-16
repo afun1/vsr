@@ -159,15 +159,17 @@ const AdminDashboard: React.FC = () => {
     );
   });
 
-  const [profileEmails, setProfileEmails] = useState<string[]>([]);
   useEffect(() => {
-    supabase.from('profiles').select('email').then(({ data }) => {
-      if (data) setProfileEmails(data.map((p: any) => p.email));
+    supabase.from('clients').select('id, email, name, first_name, last_name, created_at').then(({ data }) => {
+      if (data) setMembers(data);
     });
   }, []);
+
+  // Allow overlap: show all members, even if their email is in profiles
   const filteredMembers = members.filter(m =>
-    (!memberSearch || (m.email && m.email.toLowerCase().includes(memberSearch.toLowerCase())) || (m.name && m.name.toLowerCase().includes(memberSearch.toLowerCase()))) &&
-    !profileEmails.includes(m.email)
+    !memberSearch ||
+    (m.email && m.email.toLowerCase().includes(memberSearch.toLowerCase())) ||
+    (m.name && m.name.toLowerCase().includes(memberSearch.toLowerCase()))
   );
 
   const handleUserActive = async (userId: string, active: boolean) => {
@@ -189,12 +191,6 @@ const AdminDashboard: React.FC = () => {
     setUsers(users => users.map(u => u.id === userId ? { ...u, ...updateFields } : u));
     setEditingUserId(null);
   };
-
-  useEffect(() => {
-    supabase.from('clients').select('id, email, name, first_name, last_name, created_at').then(({ data }) => {
-      if (data) setMembers(data);
-    });
-  }, []);
 
   const handleBulkDeleteUsers = async () => {
     if (selectedUserIds.length === 0) {
@@ -478,7 +474,8 @@ const AdminDashboard: React.FC = () => {
         <table style={tableStyle}>
           <thead>
             <tr>
-              <th style={thStyle}><input type="checkbox" checked={filteredUsers.length > 0 && filteredUsers.slice((userPage-1)*usersPerPage, userPage*usersPerPage).every(u => selectedUserIds.includes(u.id))} onChange={e => setSelectedUserIds(e.target.checked ? filteredUsers.slice((userPage-1)*usersPerPage, userPage*usersPerPage).map(u => u.id) : [])} /></th>
+              {/* Removed select all checkbox */}
+              <th style={thStyle}></th>
               <th style={thStyle}>Email</th>
               <th style={thStyle}>Display Name</th>
               <th style={thStyle}>Role</th>
@@ -636,7 +633,8 @@ const AdminDashboard: React.FC = () => {
         <table style={tableStyle}>
           <thead>
             <tr>
-              <th style={thStyle}><input type="checkbox" checked={pagedMembers.length > 0 && pagedMembers.every(m => selectedMemberIds.includes(m.id))} onChange={e => setSelectedMemberIds(e.target.checked ? pagedMembers.map(m => m.id) : [])} /></th>
+              {/* Removed select all checkbox */}
+              <th style={thStyle}></th>
               <th style={thStyle}>Email</th>
               <th style={thStyle}>Name</th>
               <th style={thStyle}>Created At</th>

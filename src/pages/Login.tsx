@@ -239,6 +239,43 @@ const Login: React.FC = () => {
             Sign Up
           </button>
         </div>
+        
+        {/* Training Page Access */}
+        <div style={{ marginTop: 16, textAlign: 'center' }}>
+          <button
+            style={{
+              padding: '8px 16px',
+              fontWeight: 600,
+              background: 'transparent',
+              color: palette.accent,
+              border: `2px solid ${palette.accent}`,
+              borderRadius: 6,
+              cursor: 'pointer',
+              fontSize: '14px',
+              transition: 'all 0.2s ease'
+            }}
+            onClick={() => navigate('/vimeo-training')}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = palette.accent;
+              e.currentTarget.style.color = '#fff';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = palette.accent;
+            }}
+          >
+            🎯 View Vimeo Training Resources
+          </button>
+          <div style={{ 
+            fontSize: '12px', 
+            color: palette.text, 
+            marginTop: '4px',
+            opacity: 0.7
+          }}>
+            No login required
+          </div>
+        </div>
+        
         <button
           type="button"
           style={linkButtonStyle}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import Header from '../Header';
+import { useNavigate } from 'react-router-dom';
 
 // --- Dark mode hook ---
 const useDarkMode = () => {
@@ -26,6 +26,7 @@ interface TrainingVideo {
 
 const VimeoTraining: React.FC = () => {
   const darkMode = useDarkMode();
+  const navigate = useNavigate();
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [selectedLevel, setSelectedLevel] = useState<string>('All');
 
@@ -192,7 +193,52 @@ const VimeoTraining: React.FC = () => {
       minHeight: '100vh',
       fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
     }}>
-      <Header />
+      {/* Simple Header for Training Page */}
+      <header style={{
+        backgroundColor: palette.card,
+        borderBottom: `1px solid ${palette.border}`,
+        padding: '1rem 2rem',
+        boxShadow: palette.shadow
+      }}>
+        <div style={{ 
+          maxWidth: '1200px', 
+          margin: '0 auto', 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center' 
+        }}>
+          <h2 style={{ 
+            margin: 0, 
+            color: palette.accent,
+            fontSize: '1.5rem',
+            fontWeight: '600'
+          }}>
+            📹 Screen Recorder
+          </h2>
+          <button
+            onClick={() => navigate('/login')}
+            style={{
+              padding: '0.5rem 1rem',
+              backgroundColor: palette.accent,
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              fontSize: '0.9rem',
+              fontWeight: '500',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = palette.accent4;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = palette.accent;
+            }}
+          >
+            Back to Login
+          </button>
+        </div>
+      </header>
       
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
         {/* Header */}

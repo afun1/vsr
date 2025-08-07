@@ -20,7 +20,7 @@ const useDarkMode = () => {
 };
 
 interface RecordingPanelProps {
-  setRecordedVideoUrl: (url: string | null) => void;
+  setRecordedVideoUrl: (url: string | null, displayName?: string | null) => void;
   onStartLiveScreen: (stream: MediaStream) => void;
 }
 
@@ -39,13 +39,12 @@ function formatBytes(bytes: number) {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-// Unified member type for dropdown
-type Member = {
+// Account type for dropdown
+type Account = {
   id: string;
   name?: string;
   email?: string;
-  sparky_username?: string;
-  source: 'client' | 'profile';
+  source?: string; // Add source to distinguish between clients and profiles
 };
 
 const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, onStartLiveScreen }) => {
@@ -106,19 +105,12 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
 
   const [memberMode, setMemberMode] = useState<'existing' | 'new'>('existing');
   const [search, setSearch] = useState('');
-  const [clientId, setClientId] = useState<string | null>(() =>
-    typeof window !== 'undefined' ? localStorage.getItem('lastMemberId') || null : null
+  const [accountId, setAccountId] = useState<string | null>(() =>
+    typeof window !== 'undefined' ? localStorage.getItem('lastAccountId') || null : null
   );
-  const [allMembers, setAllMembers] = useState<Member[]>([]);
-  const [filteredMembers, setFilteredMembers] = useState<Member[]>([]);
+  const [allAccounts, setAllAccounts] = useState<Account[]>([]);
+  const [filteredAccounts, setFilteredAccounts] = useState<Account[]>([]);
   const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
-  const [newFirstName, setNewFirstName] = useState('');
-  const [newLastName, setNewLastName] = useState('');
-  const [newEmail, setNewEmail] = useState('');
-  const [newUsername, setNewUsername] = useState('');
-  const [newPhone, setNewPhone] = useState('');
-  const [newMemberLoading, setNewMemberLoading] = useState(false);
-  const [newMemberError, setNewMemberError] = useState<string | null>(null);
   const [inputs, setInputs] = useState<MediaDeviceInfo[]>([]);
   const [outputs, setOutputs] = useState<MediaDeviceInfo[]>([]);
   const [selectedMic, setSelectedMic] = useState(() =>
@@ -160,96 +152,55 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
   const outputRecordingSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const outputRecordingAnimationFrameRef = useRef<number | null>(null);
 
-  // Fetch all clients and profiles once on mount
+  // --- Display name state for showing after save ---
+  const [lastDisplayName, setLastDisplayName] = useState<string | null>(null);
+
+  // Fetch all accounts from supabase accounts table on mount
   useEffect(() => {
-    async function fetchAllMembers() {
+    async function fetchAllAccounts() {
       try {
-        const clientsRes = await supabase.from('clients').select('id, name, email, sparky_username');
-        const profilesRes = await supabase.from('profiles').select('id, display_name, email');
-        let clients: any[] = [];
-        let profiles: any[] = [];
-        let errorMsg = '';
-        if (clientsRes.error) errorMsg += 'Clients: ' + clientsRes.error.message + '. ';
-        if (profilesRes.error) errorMsg += 'Profiles: ' + profilesRes.error.message + '. ';
-        if (errorMsg) {
-          setSuggestionsError('Error loading members. ' + errorMsg);
-          setAllMembers([]);
+        // Fetch source column as well
+        const { data, error } = await supabase.from('accounts').select('id, name, email, source');
+        if (error) {
+          setSuggestionsError('Error loading accounts. ' + error.message);
+          setAllAccounts([]);
         } else {
-          clients = clientsRes.data || [];
-          profiles = profilesRes.data || [];
-          const clientMembers: Member[] = clients.map((c: any) => ({
-            id: c.id,
-            name: c.name,
-            email: c.email,
-            sparky_username: c.sparky_username,
-            source: 'client'
-          }));
-          const profileMembers: Member[] = profiles.map((p: any) => ({
-            id: p.id,
-            name: p.display_name,
-            email: p.email,
-            sparky_username: undefined,
-            source: 'profile'
-          }));
-          // Remove duplicates by id, prefer client over profile if both exist
-          const all = [
-            ...clientMembers,
-            ...profileMembers.filter(p => !clientMembers.some(c => c.id === p.id))
-          ];
-          // Sort by name/email/username
-          all.sort((a, b) => {
-            const aStr = (a.name || a.email || a.sparky_username || '').toLowerCase();
-            const bStr = (b.name || b.email || b.sparky_username || '').toLowerCase();
-            return aStr.localeCompare(bStr);
-          });
-          setAllMembers(all);
+          setAllAccounts(data || []);
         }
       } catch (err: any) {
-        setSuggestionsError('Error loading members. ' + (err?.message || String(err)));
-        setAllMembers([]);
+        setSuggestionsError('Error loading accounts. ' + (err?.message || String(err)));
+        setAllAccounts([]);
       }
     }
-    fetchAllMembers();
+    fetchAllAccounts();
   }, []);
 
-  // Filter allMembers in-memory for suggestions (quick filter)
+  // Filter allAccounts in-memory for suggestions (quick filter)
   useEffect(() => {
     if (memberMode !== 'existing') return;
     const lower = search.trim().toLowerCase();
     if (!lower) {
-      setFilteredMembers(allMembers);
+      setFilteredAccounts(allAccounts);
       return;
     }
-    setFilteredMembers(
-      allMembers.filter(member =>
-        (member.name && member.name.toLowerCase().startsWith(lower)) ||
-        (member.email && member.email.toLowerCase().startsWith(lower)) ||
-        (member.sparky_username && member.sparky_username.toLowerCase().startsWith(lower))
+    setFilteredAccounts(
+      allAccounts.filter(account =>
+        (account.name && account.name.toLowerCase().includes(lower)) ||
+        (account.email && account.email.toLowerCase().includes(lower))
       )
     );
-  }, [search, memberMode, allMembers]);
+  }, [search, memberMode, allAccounts]);
 
-  // --- Fix: Set clientId to first filtered member if not set and there are members ---
+  // Set accountId to first filtered account if not set and there are accounts
   useEffect(() => {
     if (
       memberMode === 'existing' &&
-      (!clientId || !filteredMembers.some(m => m.id === clientId)) &&
-      filteredMembers.length > 0
+      (!accountId || !filteredAccounts.some(a => a.id === accountId)) &&
+      filteredAccounts.length > 0
     ) {
-      setClientId(filteredMembers[0].id);
+      setAccountId(filteredAccounts[0].id);
     }
-  }, [filteredMembers, memberMode, clientId]);
-
-  useEffect(() => {
-    if (memberMode === 'new') {
-      setNewFirstName('');
-      setNewLastName('');
-      setNewEmail('');
-      setNewUsername('');
-      setNewPhone('');
-      setNewMemberError(null);
-    }
-  }, [memberMode]);
+  }, [filteredAccounts, memberMode, accountId]);
 
   useEffect(() => {
     if (typeof navigator === 'undefined' || !navigator.mediaDevices) return;
@@ -651,9 +602,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
 
   const handleSaveRecordingDetails = async () => {
     setRecordingError(null);
-    let finalClientId = null;
-    let finalProfileId = null;
-    let selectedMember: Member | undefined = undefined;
 
     if (!stoppedRecordingBlob || !stoppedRecordingUrl) {
       setRecordingError('No recording to upload.');
@@ -664,135 +612,74 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
       return;
     }
     if (memberMode === 'existing') {
-      if (!clientId) {
-        setRecordingError('Please select a member before saving.');
+      if (!accountId) {
+        setRecordingError('Please select an account before saving.');
         return;
       }
       try {
-        selectedMember = allMembers.find(m => m.id === clientId);
-        // --- Require name for existing member ---
-        if (!selectedMember) {
-          setRecordingError('Selected member does not exist.');
-          if (typeof window !== 'undefined') localStorage.removeItem('lastMemberId');
-          setClientId(null);
+        const selectedAccount = allAccounts.find(a => a.id === accountId);
+        if (!selectedAccount) {
+          setRecordingError('Selected account does not exist.');
+          if (typeof window !== 'undefined') localStorage.removeItem('lastAccountId');
+          setAccountId(null);
           return;
         }
-        if (!selectedMember.name || selectedMember.name.trim() === '') {
-          setRecordingError('Selected member must have a name. Please choose a member with a name.');
+        const { data: userData } = await supabase.auth.getUser();
+        const userId = userData?.user?.id;
+        if (!userId) {
+          setRecordingError('No userId for upload');
           return;
         }
-        if (selectedMember.source === 'client') {
-          finalClientId = selectedMember.id;
-        } else if (selectedMember.source === 'profile') {
-          finalProfileId = selectedMember.id;
+        const fileName = `${userId}-${Date.now()}.webm`;
+        const { error: storageError } = await supabase.storage.from('recordings').upload(fileName, stoppedRecordingBlob, { upsert: true, contentType: 'video/webm' });
+        if (storageError) {
+          setRecordingError('Failed to upload video: ' + storageError.message);
+          return;
+        }
+        const { data: publicUrlData } = supabase.storage.from('recordings').getPublicUrl(fileName);
+        const videoPublicUrl = publicUrlData?.publicUrl;
+
+        // Only set client_id if source is 'clients', only set profile_id if source is 'profile'
+        const insertPayload: any = {
+          user_id: userId,
+          video_url: videoPublicUrl,
+          transcript: '',
+          created_at: new Date().toISOString(),
+          display_name: selectedAccount.name || null,
+        };
+        if (selectedAccount.source === 'clients') {
+          insertPayload.client_id = selectedAccount.id;
+          insertPayload.profile_id = null;
+        } else if (selectedAccount.source === 'profile') {
+          insertPayload.profile_id = selectedAccount.id;
+          insertPayload.client_id = null;
+        } else {
+          insertPayload.client_id = null;
+          insertPayload.profile_id = null;
+        }
+
+        // Fetch display_name in select
+        const { data: insertData, error: dbError } = await supabase.from('recordings').insert(insertPayload).select('id, video_url, display_name');
+        if (dbError) {
+          setRecordingError('Failed to insert recording row: ' + dbError.message);
+        } else if (insertData && insertData.length > 0) {
+          const newRecording = insertData[0];
+          setRecordedVideoUrl(newRecording.video_url, newRecording.display_name);
+          setLastDisplayName(newRecording.display_name || null);
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('sparky-auto-select-recording', { detail: newRecording.video_url }));
+          }
+          setStoppedRecordingBlob(null);
+          setStoppedRecordingUrl(null);
         }
       } catch (err) {
-        setRecordingError('Error verifying member: ' + (err instanceof Error ? err.message : String(err)));
-        return;
+        setRecordingError('Unexpected error during upload: ' + (err instanceof Error ? err.message : String(err)));
       }
     } else {
-      if (!newFirstName.trim() || !newLastName.trim() || !newUsername.trim()) {
-        setNewMemberError('First name, last name, and username are required.');
-        return;
-      }
-      setNewMemberError(null);
-      setNewMemberLoading(true);
-      try {
-        const insertData: any = {
-          name: `${newFirstName.trim()} ${newLastName.trim()}`,
-          sparky_username: newUsername.trim(),
-          phone: newPhone.trim(),
-        };
-        if (newEmail.trim() !== '') {
-          insertData.email = newEmail.trim();
-        }
-        const { data, error } = await supabase.from('clients').insert(insertData).select('id').single();
-        if (error) {
-          if (
-            error.message &&
-            error.message.includes('duplicate key value') &&
-            error.message.includes('unique_client_email')
-          ) {
-            setNewMemberError('A member with this email already exists. Please use a different email or select the existing member.');
-          } else {
-            setNewMemberError('Failed to create new member: ' + error.message);
-          }
-          setNewMemberLoading(false);
-          return;
-        }
-        if (!data?.id) {
-          setNewMemberError('Failed to create new member: No ID returned');
-          setNewMemberLoading(false);
-          return;
-        }
-        setClientId(data.id);
-        if (typeof window !== 'undefined') localStorage.setItem('lastMemberId', data.id);
-        setNewMemberLoading(false);
-        finalClientId = data.id;
-      } catch (err) {
-        setNewMemberError('Unexpected error creating member: ' + (err instanceof Error ? err.message : String(err)));
-        setNewMemberLoading(false);
-        return;
-      }
-    }
-    try {
-      const { data: userData } = await supabase.auth.getUser();
-      const userId = userData?.user?.id;
-      if (!userId) {
-        setRecordingError('No userId for upload');
-        return;
-      }
-      const fileName = `${userId}-${Date.now()}.webm`;
-      const { error: storageError } = await supabase.storage.from('recordings').upload(fileName, stoppedRecordingBlob, { upsert: true, contentType: 'video/webm' });
-      if (storageError) {
-        setRecordingError('Failed to upload video: ' + storageError.message);
-        return;
-      }
-      const { data: publicUrlData } = supabase.storage.from('recordings').getPublicUrl(fileName);
-      const videoPublicUrl = publicUrlData?.publicUrl;
-
-      // Insert correct foreign key depending on member type
-      const insertPayload: any = {
-        user_id: userId,
-        client_id: finalClientId,
-        profile_id: finalProfileId,
-        video_url: videoPublicUrl,
-        transcript: '',
-        created_at: new Date().toISOString(),
-      };
-
-      const { data: insertData, error: dbError } = await supabase.from('recordings').insert(insertPayload).select('id, video_url');
-      if (dbError) {
-        setRecordingError('Failed to insert recording row: ' + dbError.message);
-      } else if (insertData && insertData.length > 0) {
-        const newRecording = insertData[0];
-        setRecordedVideoUrl(newRecording.video_url);
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('sparky-auto-select-recording', { detail: newRecording.video_url }));
-        }
-        setStoppedRecordingBlob(null);
-        setStoppedRecordingUrl(null);
-      }
-    } catch (err) {
-      setRecordingError('Unexpected error during upload: ' + (err instanceof Error ? err.message : String(err)));
-    }
-  };
-
-  useEffect(() => {
-    if (memberMode !== 'existing') return;
-    const lower = search.trim().toLowerCase();
-    if (!lower) {
-      setFilteredMembers(allMembers);
+      setRecordingError('Creating new accounts is not supported in this panel.');
       return;
     }
-    setFilteredMembers(
-      allMembers.filter(member =>
-        (member.name && member.name.toLowerCase().startsWith(lower)) ||
-        (member.email && member.email.toLowerCase().startsWith(lower)) ||
-        (member.sparky_username && member.sparky_username.toLowerCase().startsWith(lower))
-      )
-    );
-  }, [search, memberMode, allMembers]);
+  };
 
   // --- Styles ---
   const cardStyle: React.CSSProperties = {
@@ -999,6 +886,12 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
                 Max: {SUPABASE_MAX_SIZE_MB} MB
               </span>
             </div>
+            {/* Display the display_name if available */}
+            {lastDisplayName && (
+              <div style={{ marginBottom: 8, color: palette.text, fontWeight: 600, fontSize: 18 }}>
+                {lastDisplayName}
+              </div>
+            )}
             <div style={{ width: '100%', maxWidth: 400, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <div style={{ display: 'flex', gap: 24, marginBottom: 12, marginTop: 0 }}>
                 <label style={{ fontWeight: 500 }}>
@@ -1010,126 +903,53 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
                     onChange={() => setMemberMode('existing')}
                     style={{ marginRight: 6 }}
                   />
-                  Existing Member
-                </label>
-                <label style={{ fontWeight: 500 }}>
-                  <input
-                    type="radio"
-                    name="memberMode"
-                    value="new"
-                    checked={memberMode === 'new'}
-                    onChange={() => setMemberMode('new')}
-                    style={{ marginRight: 6 }}
-                  />
-                  New Member
+                  Existing Account
                 </label>
               </div>
               {memberMode === 'existing' && (
                 <div style={{ marginBottom: 16, width: '100%' }}>
-                  <label htmlFor="existing-member-search">Quick Filter:</label>
+                  <label htmlFor="existing-account-search">Quick Filter:</label>
                   <input
                     type="text"
                     value={search}
                     onChange={e => setSearch(e.target.value)}
-                    placeholder="Type to filter by name, email, or username"
+                    placeholder="Type to filter by name or email"
                     style={inputStyle}
                   />
-                  <label htmlFor="existing-member-dropdown">Select Member:</label>
+                  <label htmlFor="existing-account-dropdown">Select Account:</label>
                   <select
-                    id="existing-member-dropdown"
-                    value={clientId || (filteredMembers.length > 0 ? filteredMembers[0].id : '')}
+                    id="existing-account-dropdown"
+                    value={accountId || (filteredAccounts.length > 0 ? filteredAccounts[0].id : '')}
                     onChange={e => {
-                      setClientId(e.target.value);
-                      if (typeof window !== 'undefined') localStorage.setItem('lastMemberId', e.target.value);
+                      setAccountId(e.target.value);
+                      if (typeof window !== 'undefined') localStorage.setItem('lastAccountId', e.target.value);
                     }}
                     style={inputStyle}
                   >
-                    {filteredMembers.length > 0 ? (
-                      filteredMembers.map(member => (
-                        <option key={member.id} value={member.id}>
-                          {member.name || member.email || member.sparky_username || '(No Name)'}
-                          {member.email ? ` (${member.email})` : ''}
-                          {member.source === 'profile' ? ' [Admin]' : ''}
+                    {filteredAccounts.length > 0 ? (
+                      filteredAccounts.map(account => (
+                        <option key={account.id} value={account.id}>
+                          {account.name || '(No Name)'}{account.email ? ` (${account.email})` : ''}
                         </option>
                       ))
                     ) : (
-                      <option value="">-- Select a member --</option>
+                      <option value="">-- Select an account --</option>
                     )}
                   </select>
                   {suggestionsError && (
                     <div style={{ color: palette.error, fontSize: 13, marginTop: 4 }}>{suggestionsError}</div>
                   )}
-                  {filteredMembers.length === 0 && !suggestionsError && (
-                    <div style={{ color: palette.textSecondary, fontSize: 13, marginTop: 4 }}>No members found.</div>
+                  {filteredAccounts.length === 0 && !suggestionsError && (
+                    <div style={{ color: palette.textSecondary, fontSize: 13, marginTop: 4 }}>No accounts found.</div>
                   )}
-                </div>
-              )}
-              {memberMode === 'new' && (
-                <div style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 10, width: '100%' }}>
-                  <label>
-                    First Name:
-                    <input
-                      type="text"
-                      value={newFirstName}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewFirstName(e.target.value)}
-                      style={inputStyle}
-                      autoComplete="off"
-                    />
-                  </label>
-                  <label>
-                    Last Name:
-                    <input
-                      type="text"
-                      value={newLastName}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewLastName(e.target.value)}
-                      style={inputStyle}
-                      autoComplete="off"
-                    />
-                  </label>
-                  <label>
-                    Email:
-                    <input
-                      type="email"
-                      value={newEmail}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewEmail(e.target.value)}
-                      style={inputStyle}
-                      autoComplete="off"
-                    />
-                  </label>
-                  <label>
-                    Sparky Username:
-                    <input
-                      type="text"
-                      value={newUsername}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewUsername(e.target.value)}
-                      style={inputStyle}
-                      autoComplete="off"
-                    />
-                  </label>
-                  <label>
-                    Phone:
-                    <input
-                      type="tel"
-                      value={newPhone}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPhone(e.target.value)}
-                      style={inputStyle}
-                      autoComplete="off"
-                    />
-                  </label>
-                  {newMemberError && <div style={{ color: palette.error, fontSize: 13 }}>{newMemberError}</div>}
                 </div>
               )}
               <button
                 onClick={handleSaveRecordingDetails}
                 disabled={
                   memberMode === 'existing'
-                    ? !clientId || !stoppedRecordingBlob || !(
-                        (() => {
-                          const m = allMembers.find(m => m.id === clientId);
-                          return m && m.name && m.name.trim() !== '';
-                        })()
-                      )
-                    : newMemberLoading || !newFirstName.trim() || !newLastName.trim() || !newUsername.trim() || !stoppedRecordingBlob
+                    ? !accountId || !stoppedRecordingBlob
+                    : true
                 }
                 style={{
                   background: palette.accent2,
@@ -1141,17 +961,10 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
                   fontSize: 18,
                   cursor:
                     memberMode === 'existing'
-                      ? !clientId || !stoppedRecordingBlob || !(
-                          (() => {
-                            const m = allMembers.find(m => m.id === clientId);
-                            return m && m.name && m.name.trim() !== '';
-                          })()
-                        )
+                      ? !accountId || !stoppedRecordingBlob
                         ? 'not-allowed'
                         : 'pointer'
-                      : newMemberLoading || !newFirstName.trim() || !newLastName.trim() || !newUsername.trim() || !stoppedRecordingBlob
-                      ? 'not-allowed'
-                      : 'pointer',
+                      : 'not-allowed',
                   boxShadow: '0 2px 8px #28a74522',
                   marginTop: 12,
                 }}

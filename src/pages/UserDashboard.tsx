@@ -83,6 +83,7 @@ const UserDashboard: React.FC = () => {
   // --- Recordings state ---
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [loadingRecordings, setLoadingRecordings] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState<string>('');
 
   useEffect(() => {
     if (liveVideoRef.current && liveStream) {
@@ -118,15 +119,24 @@ const UserDashboard: React.FC = () => {
   useEffect(() => {
     const fetchRecordings = async () => {
       setLoadingRecordings(true);
-      if (!user?.id) {
+      
+      // Get the actual user ID from Supabase auth
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData?.user?.id;
+      
+      if (!userId) {
         setRecordings([]);
         setLoadingRecordings(false);
+        setCurrentUserId('');
         return;
       }
-      const { data, error } = await supabase
+      
+      setCurrentUserId(userId);
+      
+      const { data } = await supabase
         .from('recordings')
         .select('id, video_url, transcript, created_at')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .order('created_at', { ascending: false });
       setRecordings(data || []);
       setLoadingRecordings(false);
@@ -246,11 +256,10 @@ const UserDashboard: React.FC = () => {
         </div>
         {/* User's Recordings List */}
         <div style={{ width: '100%', maxWidth: 700 }}>
-          <h3 style={{ color: palette.text, marginBottom: 16 }}>Your Recordings</h3>
           {loadingRecordings ? (
             <div style={{ color: palette.textSecondary }}>Loading...</div>
           ) : recordings.length === 0 ? (
-            <div style={{ color: palette.textSecondary }}>No recordings found.</div>
+            <></>
           ) : (
             recordings.map(rec => (
               <div
@@ -309,7 +318,7 @@ const UserDashboard: React.FC = () => {
                       WebkitBoxOrient: 'vertical'
                     }}
                   >
-                    <Comments recordingId={rec.id} userId={user?.id || ''} />
+                    <Comments recordingId={rec.id} userId={currentUserId} />
                   </div>
                 </div>
               </div>

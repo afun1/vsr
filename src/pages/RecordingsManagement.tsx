@@ -7,9 +7,10 @@ import { useAuth } from '../auth/AuthContext';
 // --- Dark mode hook ---
 const useDarkMode = () => {
   const [dark, setDark] = useState(() =>
-    window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+    typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
   );
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     const handler = (e: MediaQueryListEvent) => setDark(e.matches);
     mq.addEventListener('change', handler);
@@ -247,9 +248,6 @@ const RecordingsManagement: React.FC = () => {
   // Add Comment Modal state
   const [showAddCommentModal, setShowAddCommentModal] = useState(false);
   const [addCommentText, setAddCommentText] = useState('');
-  const [addCommentLoading, setAddCommentLoading] = useState(false);
-  const [addCommentError, setAddCommentError] = useState<string | null>(null);
-  const [addCommentSuccess, setAddCommentSuccess] = useState<string | null>(null);
   const [addCommentDisplayName, setAddCommentDisplayName] = useState('');
   const [addCommentBy, setAddCommentBy] = useState('');
   const [addCommentDisplayNameLoading, setAddCommentDisplayNameLoading] = useState(true);
@@ -260,15 +258,12 @@ const RecordingsManagement: React.FC = () => {
   // For keeping track of which recording's comments should refresh
   const lastCommentedRecordingId = useRef<string | null>(null);
 
-  // Only allow add comment when user is loaded and display name is loaded
-  const addCommentReady = (typeof user === 'string' ? !!user : !!user?.id) && !addCommentDisplayNameLoading;
-
   // Fetch display_name for the current user for the Add Comment modal
   useEffect(() => {
     const fetchDisplayName = async () => {
       setAddCommentDisplayNameLoading(true);
       let displayName = '';
-      let userId = typeof user === 'string' ? user : user?.id;
+      const userId = typeof user === 'string' ? user : null;
       if (userId) {
         const { data, error } = await supabase
           .from('profiles')
@@ -277,10 +272,14 @@ const RecordingsManagement: React.FC = () => {
           .maybeSingle();
         if (!error && data && data.display_name && data.display_name.trim() !== '') {
           displayName = data.display_name;
-        } else if (typeof user === 'object' && user.user_metadata && user.user_metadata.full_name) {
-          displayName = user.user_metadata.full_name;
-        } else if (typeof user === 'object' && user.email) {
-          displayName = user.email;
+        } else {
+          // Fallback to getting user info from Supabase auth
+          const { data: userData } = await supabase.auth.getUser();
+          if (userData.user?.user_metadata?.full_name) {
+            displayName = userData.user.user_metadata.full_name;
+          } else if (userData.user?.email) {
+            displayName = userData.user.email;
+          }
         }
       }
       setAddCommentDisplayName(displayName);
@@ -311,26 +310,6 @@ const RecordingsManagement: React.FC = () => {
     };
     fetchRecordings();
   }, []);
-
-  const exportCSV = (rows: any[], columns: string[], filename: string) => {
-    const csv = [columns.join(',')].concat(
-      rows.map(r => columns.map(c => JSON.stringify(r[c] ?? '')).join(','))
-    ).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleBulkDeleteRecordings = async () => {
-    if (!window.confirm('Delete selected recordings? This cannot be undone.')) return;
-    await supabase.from('recordings').delete().in('id', selectedRecordingIds);
-    setRecordings(recs => recs.filter(r => !selectedRecordingIds.includes(r.id)));
-    setSelectedRecordingIds([]);
-  };
 
   // --- Date range filter logic ---
   function isWithinDateRange(dateStr: string) {
@@ -392,23 +371,12 @@ const RecordingsManagement: React.FC = () => {
 
   const openAddCommentModal = () => {
     setAddCommentText('');
-    setAddCommentError(null);
-    setAddCommentSuccess(null);
     setShowAddCommentModal(true);
-    // Log modal open state and user info for debugging
-    console.log('[AddCommentModal] Opened', {
-      user,
-      addCommentDisplayName,
-      addCommentBy,
-      addCommentDisplayNameLoading
-    });
   };
 
-  const handleAddComment = async () => {
+  const handleAddComment = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!previewRecording || !addCommentText.trim()) return;
-    setAddCommentLoading(true);
-    setAddCommentError(null);
-    setAddCommentSuccess(null);
 
     const displayName = addCommentBy || addCommentDisplayName || '';
 
@@ -419,10 +387,7 @@ const RecordingsManagement: React.FC = () => {
         display_name: displayName
       }
     ]);
-    if (error) {
-      setAddCommentError('Failed to add comment.');
-    } else {
-      setAddCommentSuccess('Comment added!');
+    if (!error) {
       setAddCommentText('');
       setShowAddCommentModal(false);
 
@@ -432,7 +397,6 @@ const RecordingsManagement: React.FC = () => {
         [previewRecording.id]: (prev[previewRecording.id] || 0) + 1
       }));
     }
-    setAddCommentLoading(false);
   };
 
   // --- Search input style ---
@@ -538,6 +502,116 @@ const RecordingsManagement: React.FC = () => {
             textAlign: 'center'
           }}>
             <span style={{ color: palette.textSecondary }}>Select a recording below to preview and add comments.</span>
+          </div>
+        )}
+
+        {/* --- Add Comment Modal --- */}
+        {showAddCommentModal && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              width: '100vw',
+              height: '100vh',
+              background: darkMode ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.35)',
+              zIndex: 10000,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+            onClick={() => setShowAddCommentModal(false)}
+          >
+            <div
+              style={{
+                background: palette.modalBg,
+                color: palette.modalText,
+                borderRadius: 10,
+                padding: 32,
+                maxWidth: 420,
+                width: '95%',
+                boxShadow: palette.modalShadow,
+                position: 'relative',
+                border: `1px solid ${palette.modalBorder}`
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              <button
+                onClick={() => setShowAddCommentModal(false)}
+                style={{
+                  position: 'absolute',
+                  top: 12,
+                  right: 12,
+                  background: palette.accent,
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 4,
+                  padding: '4px 12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  zIndex: 2
+                }}
+              >
+                Close
+              </button>
+              <h3 style={{ marginBottom: 16, color: palette.modalText }}>
+                Add Comment
+              </h3>
+              <form
+                onSubmit={handleAddComment}
+                style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+              >
+                <label style={{ color: palette.textSecondary, fontSize: 15, marginBottom: 4 }}>
+                  Name:
+                  <input
+                    type="text"
+                    value={addCommentBy}
+                    onChange={e => setAddCommentBy(e.target.value)}
+                    style={{
+                      ...inputStyle,
+                      width: '100%',
+                      marginTop: 4,
+                      fontSize: 15
+                    }}
+                    disabled={addCommentDisplayNameLoading}
+                  />
+                </label>
+                <textarea
+                  value={addCommentText}
+                  onChange={e => setAddCommentText(e.target.value)}
+                  placeholder="Write your comment..."
+                  style={{
+                    ...inputStyle,
+                    width: '100%',
+                    minHeight: 80,
+                    fontSize: 15,
+                    resize: 'vertical'
+                  }}
+                  disabled={addCommentDisplayNameLoading}
+                />
+                <button
+                  type="submit"
+                  disabled={
+                    addCommentDisplayNameLoading ||
+                    !addCommentText.trim() ||
+                    !addCommentBy.trim()
+                  }
+                  style={{
+                    background: palette.accent,
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 4,
+                    padding: '8px 0',
+                    fontWeight: 600,
+                    fontSize: 16,
+                    marginTop: 8,
+                    cursor: addCommentDisplayNameLoading || !addCommentText.trim() || !addCommentBy.trim() ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  Post Comment
+                </button>
+              </form>
+            </div>
           </div>
         )}
 

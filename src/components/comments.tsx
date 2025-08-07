@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../auth/supabaseClient';
-import { Comment } from '../types/comment';
+import type { Comment } from '../types/comment';
 
 interface CommentsProps {
   recordingId: string;

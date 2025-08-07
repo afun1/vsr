@@ -166,8 +166,8 @@ const CommentsCell: React.FC<{ recordingId: string; palette: any }> = ({ recordi
             .select('clients:client_id(name), profiles:user_id(display_name)')
             .eq('id', recordingId)
             .single();
-          client = recData?.clients?.name || '';
-          userDisplay = recData?.profiles?.display_name || '';
+          client = (recData?.clients as any)?.name || '';
+          userDisplay = (recData?.profiles as any)?.display_name || '';
           created = data[0].created_at || '';
         }
       } else if (mounted) {

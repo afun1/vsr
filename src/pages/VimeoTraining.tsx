@@ -152,6 +152,91 @@ const VimeoTraining: React.FC = () => {
       url: "https://vimeo.com/events/sales-cloud-webinar",
       category: "Integrations",
       level: "Advanced"
+    },
+    // NEW ENTERPRISE ADMINISTRATION & TEAM MANAGEMENT TRAINING
+    {
+      title: "Enterprise Security & Privacy Controls",
+      description: "Comprehensive guide to Vimeo's enterprise-grade security features, privacy settings, and compliance capabilities for organizations.",
+      url: "https://vimeo.com/security",
+      category: "Security & Compliance",
+      level: "Advanced"
+    },
+    {
+      title: "Video Library Management & Organization",
+      description: "Learn how to create, manage, and organize video content with granular permissions, folder structures, and team access controls.",
+      url: "https://vimeo.com/features/video-library",
+      category: "Content Management",
+      level: "Intermediate"
+    },
+    {
+      title: "User Analytics & Team Performance Tracking",
+      description: "Deep dive into Vimeo's analytics dashboard - track team engagement, content performance, and organizational video ROI.",
+      url: "https://vimeo.com/features/video-analytics",
+      category: "Analytics",
+      level: "Advanced"
+    },
+    {
+      title: "Vimeo Your Agency: Team Management Best Practices",
+      description: "Essential strategies for managing teams, client projects, and collaborative workflows within Vimeo's enterprise platform.",
+      url: "https://vimeo.com/enterprise/vimeo-your-agency-webinar",
+      category: "Team Management",
+      level: "Advanced"
+    },
+    {
+      title: "HIPAA-Compliant Video Solutions for Healthcare",
+      description: "Learn about enterprise-level compliance, security protocols, and healthcare-specific video management requirements.",
+      url: "https://vimeo.com/events/vimeo-hipaa-secure-video-solutions",
+      category: "Security & Compliance",
+      level: "Advanced"
+    },
+    {
+      title: "Enterprise Video Collaboration Workflows",
+      description: "Master team collaboration features: review processes, approval workflows, commenting systems, and version control.",
+      url: "https://vimeo.com/features/video-collaboration",
+      category: "Team Management",
+      level: "Intermediate"
+    },
+    {
+      title: "Storage Management & Enterprise Quotas",
+      description: "Understanding storage allocation, user quotas, bandwidth management, and scaling storage for enterprise teams.",
+      url: "https://vimeo.com/features/online-video-hosting",
+      category: "Content Management",
+      level: "Intermediate"
+    },
+    {
+      title: "Setting Up Custom Subdomains & Branding",
+      description: "Configure private video hosting with custom subdomains, white-label solutions, and enterprise branding options.",
+      url: "https://vimeo.com/enterprise",
+      category: "Enterprise Setup",
+      level: "Advanced"
+    },
+    {
+      title: "Enterprise Onboarding & Account Setup",
+      description: "Step-by-step guide to enterprise account configuration, team hierarchy setup, and initial system administration.",
+      url: "https://vimeo.com/enterprise/contact-us",
+      category: "Enterprise Setup",
+      level: "Beginner"
+    },
+    {
+      title: "Global Video Distribution & CDN Management",
+      description: "Learn about Vimeo's global content delivery network, regional restrictions, and international team management.",
+      url: "https://vimeo.com/events/how-video-fuels-global-business-growth",
+      category: "Enterprise Setup",
+      level: "Advanced"
+    },
+    {
+      title: "Advanced Permission Systems & Role Management",
+      description: "Deep dive into user roles, permission hierarchies, content access controls, and administrative privileges setup.",
+      url: "https://vimeo.com/features/video-privacy",
+      category: "User Management",
+      level: "Advanced"
+    },
+    {
+      title: "Enterprise Training & L&D Implementation",
+      description: "Strategies for implementing enterprise-wide training programs, tracking learner progress, and measuring training ROI.",
+      url: "https://vimeo.com/events/boost-learning-development-strategy",
+      category: "Training & Development",
+      level: "Intermediate"
     }
   ];
 
@@ -182,6 +267,11 @@ const VimeoTraining: React.FC = () => {
       case 'AI & Learning': return '🤖';
       case 'Analytics': return '📊';
       case 'Integrations': return '🔗';
+      case 'Security & Compliance': return '🔒';
+      case 'Content Management': return '📁';
+      case 'User Management': return '👤';
+      case 'Enterprise Setup': return '⚙️';
+      case 'Training & Development': return '🎓';
       default: return '📹';
     }
   };
@@ -263,6 +353,48 @@ const VimeoTraining: React.FC = () => {
           }}>
             Learn how to leverage Vimeo's enterprise features for your screen recording and video management needs.
           </p>
+          
+          {/* Enterprise Management Highlights */}
+          <div style={{
+            backgroundColor: palette.accent5,
+            borderRadius: '12px',
+            padding: '1.5rem',
+            marginTop: '2rem',
+            maxWidth: '800px',
+            margin: '2rem auto 0 auto'
+          }}>
+            <h3 style={{ 
+              margin: '0 0 1rem 0', 
+              color: palette.accent,
+              fontSize: '1.2rem',
+              textAlign: 'center'
+            }}>
+              🎯 Master Enterprise Video Management
+            </h3>
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+              gap: '1rem',
+              fontSize: '0.9rem'
+            }}>
+              <div>
+                <strong>👥 User Management:</strong><br/>
+                Role hierarchies, permissions, team access controls
+              </div>
+              <div>
+                <strong>📁 Storage & Quotas:</strong><br/>
+                Bandwidth allocation, file limits, scaling strategies
+              </div>
+              <div>
+                <strong>🔒 Security & Compliance:</strong><br/>
+                Privacy controls, HIPAA compliance, enterprise security
+              </div>
+              <div>
+                <strong>⚙️ System Setup:</strong><br/>
+                Custom domains, branding, organizational configuration
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Filters */}
@@ -338,23 +470,26 @@ const VimeoTraining: React.FC = () => {
             alignItems: 'center',
             gap: '0.5rem'
           }}>
-            🎯 Recommended Learning Path
+            🎯 Recommended Learning Path for Enterprise Setup
           </h3>
           <div style={{ color: palette.textSecondary, lineHeight: '1.6' }}>
             <p style={{ margin: '0 0 0.5rem 0' }}>
-              <strong>1. Start with:</strong> "Get to Know the New Vimeo" for basic overview
+              <strong>1. Foundation:</strong> "Get to Know the New Vimeo" + "Enterprise Onboarding & Account Setup"
             </p>
             <p style={{ margin: '0 0 0.5rem 0' }}>
-              <strong>2. Then watch:</strong> "Mastering Enterprise Video" for strategic understanding
+              <strong>2. Strategy:</strong> "Mastering Enterprise Video" for organizational planning
             </p>
             <p style={{ margin: '0 0 0.5rem 0' }}>
-              <strong>3. Follow with:</strong> "Winter 2024 Product Release" for latest features
+              <strong>3. Setup:</strong> "Setting Up Custom Subdomains" + "Advanced Permission Systems"
             </p>
             <p style={{ margin: '0 0 0.5rem 0' }}>
-              <strong>4. Focus on:</strong> "5 Ways to Use Video for Internal Communications" for team management
+              <strong>4. Management:</strong> "Video Library Management" + "Team Management Best Practices"
+            </p>
+            <p style={{ margin: '0 0 0.5rem 0' }}>
+              <strong>5. Security:</strong> "Enterprise Security & Privacy Controls" for compliance
             </p>
             <p style={{ margin: '0' }}>
-              <strong>5. Explore:</strong> AI and Analytics webinars for advanced features
+              <strong>6. Optimization:</strong> "User Analytics" + "Storage Management" for ongoing operations
             </p>
           </div>
         </div>

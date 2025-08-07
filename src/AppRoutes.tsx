@@ -10,6 +10,7 @@ import ScreenRecorder from './pages/ScreenRecorder';
 import TechPage from './pages/Tech';
 import ResetPassword from './pages/ResetPassword';
 import RecordingsManagement from './pages/RecordingsManagement';
+import VimeoTraining from './pages/VimeoTraining';
 
 const ProtectedRoute: React.FC<{ role: 'user' | 'admin'; children: React.ReactNode }> = ({ role, children }) => {
   const { user, role: userRole, loading } = useAuth();
@@ -66,6 +67,7 @@ const AppRoutes = () => (
     <Route path="/search-export" element={<SearchExport />} />
     <Route path="/recorder" element={<ScreenRecorder />} />
     <Route path="/Tech" element={<TechPage />} />
+    <Route path="/vimeo-training" element={<VimeoTraining />} />
     <Route path="/reset-password" element={<ResetPassword />} />
     <Route
       path="/recordings-management"

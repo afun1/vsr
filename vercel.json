@@ -14,5 +14,7 @@
     "api/upload.js": {
       "maxDuration": 60
     }
-  }
+  },
+  "installCommand": "npm install",
+  "buildCommand": "npm run build"
 }

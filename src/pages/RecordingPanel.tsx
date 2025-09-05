@@ -166,7 +166,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         const { data: profiles, error: profilesError } = await supabase.from('profiles').select('id, display_name, email');
         // Fetch customers from clients
         const { data: clients, error: clientsError } = await supabase.from('clients').select('id, name, email');
-        let combined = [];
+        let combined: any[] = [];
         if (profilesError) {
           setSuggestionsError('Error loading users. ' + profilesError.message);
         }

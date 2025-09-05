@@ -1,6 +1,6 @@
-import { Vimeo } from '@vimeo/vimeo';
-import formidable from 'formidable';
-import fs from 'fs';
+const { Vimeo } = require('@vimeo/vimeo');
+const formidable = require('formidable');
+const fs = require('fs');
 
 // Initialize Vimeo client
 const vimeo = new Vimeo(
@@ -9,13 +9,13 @@ const vimeo = new Vimeo(
   process.env.VIMEO_ACCESS_TOKEN
 );
 
-export const config = {
+exports.config = {
   api: {
     bodyParser: false,
   },
 };
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }

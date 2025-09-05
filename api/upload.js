@@ -1,5 +1,5 @@
 const { Vimeo } = require('@vimeo/vimeo');
-const formidable = require('formidable');
+const { IncomingForm } = require('formidable');
 const fs = require('fs');
 
 // Initialize Vimeo client
@@ -22,7 +22,7 @@ module.exports = async function handler(req, res) {
 
   try {
     // Parse form data
-    const form = formidable({
+    const form = new IncomingForm({
       maxFileSize: 500 * 1024 * 1024, // 500MB limit
     });
 

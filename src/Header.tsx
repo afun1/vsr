@@ -64,7 +64,7 @@ const Header: React.FC = () => {
         {/* Right column (user/profile/logout) */}
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>
           <a
-            href={role === 'admin' ? 'https://sr-nine-red.vercel.app/admin' : 'https://sr-nine-red.vercel.app/user'}
+            href={role === 'admin' ? '/admin' : '/user'}
             style={{
               background: 'transparent',
               color: '#1976d2',
@@ -78,6 +78,7 @@ const Header: React.FC = () => {
               textDecoration: 'none',
               marginRight: 16
             }}
+            title={`Current role: ${role || 'none'} - Going to: ${role === 'admin' ? '/admin' : '/user'}`}
           >
             Home
           </a>

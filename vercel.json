@@ -9,5 +9,10 @@
         { "key": "Permissions-Policy", "value": "display-capture=(self)" }
       ]
     }
-  ]
+  ],
+  "functions": {
+    "api/upload.js": {
+      "maxDuration": 60
+    }
+  }
 }

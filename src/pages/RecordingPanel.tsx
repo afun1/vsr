@@ -24,7 +24,7 @@ interface RecordingPanelProps {
   onStartLiveScreen: (stream: MediaStream) => void;
 }
 
-const SUPABASE_MAX_SIZE_MB = 1024 * 5; // Set to 5GB (or your plan's max). Increase/decrease as needed.
+const VIMEO_MAX_SIZE_MB = 500; // Vimeo free plan allows up to 500MB per video
 
 function formatDuration(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -154,25 +154,38 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
 
   // --- Display name state for showing after save ---
   const [lastDisplayName, setLastDisplayName] = useState<string | null>(null);
+  // State for new customer form
+  const [newCustomerName, setNewCustomerName] = useState<string>('');
+  const [newCustomerEmail, setNewCustomerEmail] = useState<string>('');
 
   // Fetch all accounts from supabase accounts table on mount
   useEffect(() => {
-    async function fetchAllAccounts() {
+    async function fetchAllProfilesAndClients() {
       try {
-        // Fetch source column as well
-        const { data, error } = await supabase.from('accounts').select('id, name, email, source');
-        if (error) {
-          setSuggestionsError('Error loading accounts. ' + error.message);
-          setAllAccounts([]);
-        } else {
-          setAllAccounts(data || []);
+        // Fetch users from profiles
+        const { data: profiles, error: profilesError } = await supabase.from('profiles').select('id, display_name, email');
+        // Fetch customers from clients
+        const { data: clients, error: clientsError } = await supabase.from('clients').select('id, name, email');
+        let combined = [];
+        if (profilesError) {
+          setSuggestionsError('Error loading users. ' + profilesError.message);
         }
+        if (clientsError) {
+          setSuggestionsError('Error loading customers. ' + clientsError.message);
+        }
+        if (profiles) {
+          combined = combined.concat(profiles.map(p => ({ ...p, source: 'profiles' })));
+        }
+        if (clients) {
+          combined = combined.concat(clients.map(c => ({ ...c, source: 'clients' })));
+        }
+        setAllAccounts(combined);
       } catch (err: any) {
-        setSuggestionsError('Error loading accounts. ' + (err?.message || String(err)));
+        setSuggestionsError('Error loading users/customers. ' + (err?.message || String(err)));
         setAllAccounts([]);
       }
     }
-    fetchAllAccounts();
+    fetchAllProfilesAndClients();
   }, []);
 
   // Filter allAccounts in-memory for suggestions (quick filter)
@@ -600,6 +613,84 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
     }
   };
 
+  // Create a new customer in clients table
+  const createCustomer = async (name: string, email: string) => {
+    // Get the current user ID for RLS policy
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData?.user?.id) {
+      throw new Error('User not authenticated');
+    }
+
+    const { data: clientData, error: clientError } = await supabase
+      .from('clients')
+      .insert({ 
+        name, 
+        email,
+        user_id: userData.user.id 
+      })
+      .select('id, name, email, created_at');
+      
+    if (clientError || !clientData || clientData.length === 0) {
+      console.error('Supabase client insert error:', clientError, clientData);
+      throw new Error(clientError?.message || 'Failed to create customer');
+    }
+    return clientData[0];
+  };
+
+  // Upload video to Vimeo via backend and return Vimeo URL
+  const uploadVideo = async (userId: string, blob: Blob, customerName?: string, customerEmail?: string) => {
+    // Get user email for better organization
+    const { data: userData } = await supabase.auth.getUser();
+    const userEmail = userData?.user?.email || 'unknown';
+    const userName = userData?.user?.user_metadata?.display_name || userEmail.split('@')[0];
+    
+    const videoName = customerName 
+      ? `Recording for ${customerName}`
+      : `Screen Recording`;
+
+    console.log('Uploading video to Vimeo with metadata:', {
+      userId,
+      userEmail,
+      userName,
+      customerName,
+      customerEmail,
+      videoName,
+      blobSize: blob.size
+    });
+
+    const formData = new FormData();
+    formData.append('video', blob, `${userId}-${Date.now()}.webm`);
+    formData.append('name', videoName);
+    formData.append('userId', userId);
+    formData.append('userEmail', userEmail);
+    formData.append('userName', userName);
+    
+    // Add customer metadata
+    if (customerName) formData.append('customerName', customerName);
+    if (customerEmail) formData.append('contactId', customerEmail); // Using email as contact ID for now
+    
+    // Add creation date and comments
+    formData.append('comments', `Recorded via Sparky on ${new Date().toLocaleDateString()}`);
+
+    const response = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to upload video to Vimeo: ${response.status} ${errorText}`);
+    }
+
+    const result = await response.json();
+    if (!result.url) {
+      throw new Error('No Vimeo URL returned from upload');
+    }
+
+    console.log('Video uploaded successfully:', result);
+    return result.url;
+  };
+
   const handleSaveRecordingDetails = async () => {
     setRecordingError(null);
 
@@ -607,15 +698,11 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
       setRecordingError('No recording to upload.');
       return;
     }
-    if (SUPABASE_MAX_SIZE_MB > 0 && stoppedRecordingBlob.size > SUPABASE_MAX_SIZE_MB * 1024 * 1024) {
-      setRecordingError(`Recording is too large to upload (max ${SUPABASE_MAX_SIZE_MB}MB). Please record a shorter video or upgrade your plan.`);
+    if (VIMEO_MAX_SIZE_MB > 0 && stoppedRecordingBlob.size > VIMEO_MAX_SIZE_MB * 1024 * 1024) {
+      setRecordingError(`Recording is too large to upload (max ${VIMEO_MAX_SIZE_MB}MB). Please record a shorter video or upgrade your Vimeo plan.`);
       return;
     }
     if (memberMode === 'existing') {
-      if (!accountId) {
-        setRecordingError('Please select an account before saving.');
-        return;
-      }
       try {
         const selectedAccount = allAccounts.find(a => a.id === accountId);
         if (!selectedAccount) {
@@ -630,16 +717,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
           setRecordingError('No userId for upload');
           return;
         }
-        const fileName = `${userId}-${Date.now()}.webm`;
-        const { error: storageError } = await supabase.storage.from('recordings').upload(fileName, stoppedRecordingBlob, { upsert: true, contentType: 'video/webm' });
-        if (storageError) {
-          setRecordingError('Failed to upload video: ' + storageError.message);
-          return;
-        }
-        const { data: publicUrlData } = supabase.storage.from('recordings').getPublicUrl(fileName);
-        const videoPublicUrl = publicUrlData?.publicUrl;
-
-        // Only set client_id if source is 'clients', only set profile_id if source is 'profile'
+        const videoPublicUrl = await uploadVideo(userId, stoppedRecordingBlob, selectedAccount.name, selectedAccount.email);
         const insertPayload: any = {
           user_id: userId,
           video_url: videoPublicUrl,
@@ -657,8 +735,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
           insertPayload.client_id = null;
           insertPayload.profile_id = null;
         }
-
-        // Fetch display_name in select
         const { data: insertData, error: dbError } = await supabase.from('recordings').insert(insertPayload).select('id, video_url, display_name');
         if (dbError) {
           setRecordingError('Failed to insert recording row: ' + dbError.message);
@@ -674,6 +750,45 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
         }
       } catch (err) {
         setRecordingError('Unexpected error during upload: ' + (err instanceof Error ? err.message : String(err)));
+      }
+    } else if (memberMode === 'new') {
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        const userId = userData?.user?.id;
+        if (!userId) {
+          setRecordingError('No userId for upload');
+          return;
+        }
+        // Create client
+        const newClient = await createCustomer(newCustomerName, newCustomerEmail);
+        // Upload video
+        const videoPublicUrl = await uploadVideo(userId, stoppedRecordingBlob, newCustomerName, newCustomerEmail);
+        // Insert recording row
+        const insertPayload: any = {
+          user_id: userId,
+          client_id: newClient.id,
+          video_url: videoPublicUrl,
+          transcript: '',
+          created_at: new Date().toISOString(),
+          display_name: newCustomerName,
+        };
+        const { data: insertData, error: dbError } = await supabase.from('recordings').insert(insertPayload).select('id, video_url, display_name');
+        if (dbError) {
+          setRecordingError('Failed to insert recording row: ' + dbError.message);
+        } else if (insertData && insertData.length > 0) {
+          const newRecording = insertData[0];
+          setRecordedVideoUrl(newRecording.video_url, newRecording.display_name);
+          setLastDisplayName(newRecording.display_name || null);
+          setNewCustomerName('');
+          setNewCustomerEmail('');
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('sparky-auto-select-recording', { detail: newRecording.video_url }));
+          }
+          setStoppedRecordingBlob(null);
+          setStoppedRecordingUrl(null);
+        }
+      } catch (err) {
+        setRecordingError('Unexpected error during new customer upload: ' + (err instanceof Error ? err.message : String(err)));
       }
     } else {
       setRecordingError('Creating new accounts is not supported in this panel.');
@@ -806,7 +921,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
                 Size: {formatBytes(recordingSize)}
               </span>
               <span style={{ fontWeight: 600, color: palette.textSecondary, fontSize: 16 }}>
-                Max: {SUPABASE_MAX_SIZE_MB} MB
+                Max: {VIMEO_MAX_SIZE_MB} MB
               </span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'row', gap: 16, marginBottom: 8 }}>
@@ -883,7 +998,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
                 Size: {formatBytes(recordingSize)}
               </span>
               <span style={{ fontWeight: 600, color: palette.textSecondary, fontSize: 16 }}>
-                Max: {SUPABASE_MAX_SIZE_MB} MB
+                Max: {VIMEO_MAX_SIZE_MB} MB
               </span>
             </div>
             {/* Display the display_name if available */}
@@ -903,9 +1018,41 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
                     onChange={() => setMemberMode('existing')}
                     style={{ marginRight: 6 }}
                   />
-                  Existing Account
+                  Existing Customer
+                </label>
+                <label style={{ fontWeight: 500 }}>
+                  <input
+                    type="radio"
+                    name="memberMode"
+                    value="new"
+                    checked={memberMode === 'new'}
+                    onChange={() => setMemberMode('new')}
+                    style={{ marginRight: 6 }}
+                  />
+                  New Customer
                 </label>
               </div>
+              {memberMode === 'new' && (
+                <div style={{ marginBottom: 16, width: '100%' }}>
+                  <h3 style={{ marginBottom: 8 }}>Create New Customer</h3>
+                  <label htmlFor="new-customer-name">Name:</label>
+                  <input
+                    id="new-customer-name"
+                    type="text"
+                    value={newCustomerName}
+                    onChange={e => setNewCustomerName(e.target.value)}
+                    style={inputStyle}
+                  />
+                  <label htmlFor="new-customer-email">Email:</label>
+                  <input
+                    id="new-customer-email"
+                    type="email"
+                    value={newCustomerEmail}
+                    onChange={e => setNewCustomerEmail(e.target.value)}
+                    style={inputStyle}
+                  />
+                </div>
+              )}
               {memberMode === 'existing' && (
                 <div style={{ marginBottom: 16, width: '100%' }}>
                   <label htmlFor="existing-account-search">Quick Filter:</label>
@@ -949,7 +1096,9 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
                 disabled={
                   memberMode === 'existing'
                     ? !accountId || !stoppedRecordingBlob
-                    : true
+                    : memberMode === 'new'
+                      ? !newCustomerName || !newCustomerEmail || !stoppedRecordingBlob
+                      : true
                 }
                 style={{
                   background: palette.accent2,
@@ -964,7 +1113,11 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ setRecordedVideoUrl, on
                       ? !accountId || !stoppedRecordingBlob
                         ? 'not-allowed'
                         : 'pointer'
-                      : 'not-allowed',
+                      : memberMode === 'new'
+                        ? !newCustomerName || !newCustomerEmail || !stoppedRecordingBlob
+                          ? 'not-allowed'
+                          : 'pointer'
+                        : 'not-allowed',
                   boxShadow: '0 2px 8px #28a74522',
                   marginTop: 12,
                 }}

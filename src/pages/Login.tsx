@@ -150,7 +150,11 @@ const Login: React.FC = () => {
       setError('Please enter your email address above first.');
       return;
     }
-    const redirectTo = 'https://sr-nine-red.vercel.app/reset-password';
+    // Use current origin in development, Vercel URL in production
+    const baseUrl = window.location.origin.includes('localhost') 
+      ? window.location.origin 
+      : 'https://sr-nine-red.vercel.app';
+    const redirectTo = `${baseUrl}/reset-password`;
     const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
     if (error) {
       setError(error.message || 'Failed to send reset link.');

@@ -1,53 +1,95 @@
-# React + TypeScript + Vite
+# Sparky Screen Recording App
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A web-based screen recording application with Vimeo integration, user management, and customer data organization.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- 🎥 Screen recording with audio
+- 📤 Direct upload to Vimeo
+- 👥 User authentication via Supabase
+- 📊 Customer data management
+- 🔒 Secure video storage
 
-## Expanding the ESLint configuration
+## Tech Stack
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- **Frontend**: React + TypeScript + Vite
+- **Backend**: Vercel Serverless Functions
+- **Database**: Supabase
+- **Video Storage**: Vimeo
+- **Deployment**: Vercel
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+## Deploy to Vercel
+
+### Manual Deployment Steps
+
+1. **Clone and Push to GitHub**
+   ```bash
+   git clone your-repo
+   cd your-repo
+   npm install
+   ```
+
+2. **Connect to Vercel**
+   - Go to [vercel.com](https://vercel.com)
+   - Import your GitHub repository
+   - Vercel will auto-detect this as a Vite app
+
+3. **Set Environment Variables in Vercel**
+   ```
+   VITE_SUPABASE_URL=your_supabase_url
+   VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+   VIMEO_CLIENT_ID=your_vimeo_client_id
+   VIMEO_CLIENT_SECRET=your_vimeo_client_secret
+   VIMEO_ACCESS_TOKEN=your_vimeo_access_token
+   ```
+
+4. **Deploy**
+   - Vercel will automatically build and deploy
+   - Your app will be live at `https://your-app.vercel.app`
+
+## Local Development
+
+1. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+2. **Set up environment variables**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your actual credentials
+   ```
+
+3. **Run development server**
+   ```bash
+   npm run dev
+   ```
+
+## Environment Variables
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `VITE_SUPABASE_URL` | Supabase project URL | Yes |
+| `VITE_SUPABASE_ANON_KEY` | Supabase anonymous key | Yes |
+| `VIMEO_CLIENT_ID` | Vimeo app client ID | Yes |
+| `VIMEO_CLIENT_SECRET` | Vimeo app client secret | Yes |
+| `VIMEO_ACCESS_TOKEN` | Vimeo personal access token | Yes |
+
+## API Endpoints
+
+- `POST /api/upload` - Upload recorded video to Vimeo
+
+## Architecture
+
 ```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    'react-x': reactX,
-    'react-dom': reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs['recommended-typescript'].rules,
+Frontend (React)
+    ↓
+Vercel API Routes (/api/upload)
+    ↓
+Vimeo API (video storage)
+    ↓
+Supabase (user data & metadata)
+```
     ...reactDom.configs.recommended.rules,
   },
 })

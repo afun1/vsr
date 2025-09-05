@@ -29,12 +29,22 @@ module.exports = async function handler(req, res) {
       maxFileSize: 500 * 1024 * 1024, // 500MB limit
     });
 
+    console.log('[DEBUG] Starting form parsing...');
     const [fields, files] = await form.parse(req);
+    console.log('[DEBUG] Form parsed successfully. Files:', Object.keys(files));
     
     const videoFile = Array.isArray(files.video) ? files.video[0] : files.video;
     if (!videoFile) {
+      console.error('[DEBUG] No video file found in form data');
       return res.status(400).json({ error: 'No video file provided' });
     }
+    
+    console.log('[DEBUG] Video file found:', {
+      originalFilename: videoFile.originalFilename,
+      mimetype: videoFile.mimetype,
+      size: videoFile.size,
+      filepath: videoFile.filepath
+    });
 
     // Extract metadata
     const userName = Array.isArray(fields.userName) ? fields.userName[0] : fields.userName || 'Unknown User';

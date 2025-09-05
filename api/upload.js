@@ -15,9 +15,14 @@ module.exports = async function handler(req, res) {
 
   try {
     // Debug: Check if Vimeo credentials are available
+    console.log('[DEBUG] Environment variables check:');
+    console.log('VIMEO_ACCESS_TOKEN exists:', !!process.env.VIMEO_ACCESS_TOKEN);
+    console.log('VIMEO_CLIENT_ID exists:', !!process.env.VIMEO_CLIENT_ID);
+    console.log('VIMEO_CLIENT_SECRET exists:', !!process.env.VIMEO_CLIENT_SECRET);
+    
     if (!process.env.VIMEO_ACCESS_TOKEN) {
       console.error('VIMEO_ACCESS_TOKEN not found in environment variables');
-      return res.status(500).json({ error: 'Vimeo configuration missing' });
+      return res.status(500).json({ error: 'Vimeo configuration missing - VIMEO_ACCESS_TOKEN' });
     }
     // Parse form data
     const form = new IncomingForm({
